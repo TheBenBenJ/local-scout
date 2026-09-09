@@ -1,4 +1,4 @@
-"""local-agent : couche locale de réduction de contexte pour un agent de code."""
+"""local-scout : déblayage local (Jira, OCR, rg, LLM 9B) avant le diagnostic."""
 
 __all__ = [
     "agent",

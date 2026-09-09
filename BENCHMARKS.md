@@ -7,6 +7,8 @@ Command: `local-agent benchmark` / `local-agent benchmark sessions`.
 These numbers were produced by a run of `local_agent/benchmark.py`, `local_agent/replay.py` and `tests/test_router.py`. They are not invented.
 `interception_rate` compares local-agent output to the harness baseline (raw file or `rg`), **not** to billed Claude tokens.
 
+Cursor session (LYSI-6476, 9 September 2026): two fresh chats, same model, then the same 15-line diagnosis. Without scout 803.0 k, with `dossier.md` already on disk 328.3 k, economy **474.7 k (59 %)**. Detail in [README](README.md) and [`docs/scout.md`](docs/scout.md). That meter is Cursor Usage rows, not `interception_rate`.
+
 Previous PROVE IT run (same day, before DIRECT/REDUCE): tiny repo 6.9 s / partial; log missed `InvoiceService`. Extract-only REDUCE and DIRECT slim landed later the same day.
 
 ## Routing Benchmarks
@@ -174,11 +176,11 @@ The fallback is by design. The cost of the fallback is what this measures: 43x l
 
 Commands:
 
-    LOCAL_AGENT_REPO_ROOT=/Users/benjaminmille/.local-agent ./bin/local-agent --json task \
+    LOCAL_AGENT_REPO_ROOT=/Users/benjaminmille/.local-scout ./bin/local-scout --json task \
       "Where is the deterministic tier routing decided, and which function returns the initial action hint?" \
       --source "repo://local_agent/router.py"
 
-    LOCAL_AGENT_REPO_ROOT=/Users/benjaminmille/.local-agent ./bin/local-agent --json task \
+    LOCAL_AGENT_REPO_ROOT=/Users/benjaminmille/.local-scout ./bin/local-scout --json task \
       "Locate the definitions of route_task and initial_action_hint." \
       --source "repo://local_agent/router.py"
 

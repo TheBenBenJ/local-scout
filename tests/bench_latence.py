@@ -19,7 +19,7 @@ from pathlib import Path
 
 TOOL_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(TOOL_ROOT))
-AGENT = str(TOOL_ROOT / "bin" / "local-agent")
+AGENT = str(TOOL_ROOT / "bin" / "local-scout")
 
 
 def timed(function, *args, **kwargs):

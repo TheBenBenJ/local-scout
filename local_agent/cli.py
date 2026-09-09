@@ -15,8 +15,8 @@ from .report import Report, render_json, render_markdown
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="local-agent",
-        description="Réduit le contexte brut avant qu'il n'entre chez l'orchestrateur.",
+        prog="local-scout",
+        description="Commandes locales de local-scout (hors MCP).",
     )
     parser.add_argument("--json", action="store_true", help="sortie JSON au lieu du markdown")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -115,7 +115,7 @@ def run(argv: list[str] | None = None) -> int:
     try:
         report = _dispatch(arguments, config, client)
     except (GuardrailError, MlxError, ValueError) as error:
-        print(f"local-agent : {error}", file=sys.stderr)
+        print(f"local-scout : {error}", file=sys.stderr)
         return 1
 
     if isinstance(report, dict):

@@ -23,7 +23,7 @@ import time
 import unicodedata
 from pathlib import Path
 
-AGENT = str(Path.home() / ".local-agent" / "bin" / "local-agent")
+AGENT = str(Path(__file__).resolve().parent.parent / "bin" / "local-scout")
 DEFAULT_CASES = Path(__file__).resolve().parent / "cases.json"
 
 
