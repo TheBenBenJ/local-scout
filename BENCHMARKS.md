@@ -7,7 +7,7 @@ Command: `local-agent benchmark` / `local-agent benchmark sessions`.
 These numbers were produced by a run of `local_agent/benchmark.py`, `local_agent/replay.py` and `tests/test_router.py`. They are not invented.
 `interception_rate` compares local-agent output to the harness baseline (raw file or `rg`), **not** to billed Claude tokens.
 
-Cursor session (LYSI-6476, 9 September 2026): two fresh chats, same model, then the same 15-line diagnosis. Without scout 803.0 k, with `dossier.md` already on disk 328.3 k, economy **474.7 k (59 %)**. Detail in [README](README.md) and [`docs/scout.md`](docs/scout.md). That meter is Cursor Usage rows, not `interception_rate`.
+Cursor session (LYSI-6476, 9 September 2026): in one measured pair of chats, diagnosing from a **pre-built** `dossier.md` used 59% less reported usage than direct retrieval (803.0 k vs 328.3 k). Not a general “saves 59%” claim, and not a session that called `scout` in-chat. Detail in [README](README.md) and [`docs/session-bench.md`](docs/session-bench.md). That meter is Cursor Usage rows, not `interception_rate`.
 
 Previous PROVE IT run (same day, before DIRECT/REDUCE): tiny repo 6.9 s / partial; log missed `InvoiceService`. Extract-only REDUCE and DIRECT slim landed later the same day.
 

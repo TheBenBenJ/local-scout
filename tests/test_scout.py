@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from local_agent.scout import extract  # noqa: E402
 from local_agent.scout.dossier import Dossier, write_dossier  # noqa: E402
-from local_agent.scout.mcp import TOOLS, Server  # noqa: E402
+from local_agent.scout.mcp import TOOLS, Server, _handle, want_llm, format_ping  # noqa: E402
 from local_agent.scout.stats import SourceLedger  # noqa: E402
 
 
@@ -72,8 +72,9 @@ def main() -> None:
         }
     )
     rendered = dossier.markdown(cap=800)
-    check("plafond dossier", len(rendered) <= 800 + 5)
-    check("mention tronqué", "tronqué" in rendered)
+    check("plafond dossier", len(rendered) <= 800)
+    check("mention truncated", "[truncated]" in rendered or "omitted" in rendered)
+    check("trous sous petit plafond", "## Trous" in rendered)
     check("markdown ne touche pas le ledger", dossier.ledger.jira_chars == 100)
     check("markdown ne touche pas raw_chars", dossier.raw_chars == 140)
     check("to_json raw = ledger texte", dossier.to_json()["raw_chars"] == 140)
@@ -98,7 +99,7 @@ def main() -> None:
         written, json_path = write_dossier(Dossier(mission="hello", ledger=ledger), Path(tmp))
         body = written.read_text(encoding="utf-8")
         payload = json.loads(json_path.read_text(encoding="utf-8"))
-        check("écriture md", written.is_file() and "prêt pour le diagnostic" in body)
+        check("écriture md", written.is_file() and "Dossier scout" in body)
         check("json visible = md", payload["visible_chars"] == len(body))
         check("json raw = ledger", payload["raw_chars"] == 140)
         check("json ledger jira", payload["ledger"]["jira_chars"] == 100)
@@ -109,6 +110,60 @@ def main() -> None:
     check("head doctor", _head_command(["doctor"]) == "doctor")
     check("head --json doctor", _head_command(["--json", "doctor"]) == "doctor")
     check("head scout pas commande", _head_command(["--ticket", "LYSI-1"]) is None)
+
+    ROOT_CAUSE = "InvoiceService::computeTotal returns null when line.qty is 0"
+    fat = Dossier(
+        mission="Why is the invoice total empty?",
+        holes=["HOLE-missing-stacktrace-worker-7"],
+        errors=["LYSI-9: timeout"],
+    )
+    fat.images = [
+        {"name": f"cap-{index}.png", "transcript": f"CAPTURE-PROOF-{index} " + ("ocr " * 400)}
+        for index in range(8)
+    ]
+    fat.tickets = [
+        {
+            "key": "LYSI-9",
+            "goal": "total vide",
+            "issuetype": "Anomalie",
+            "status": "Ouvert",
+            "acceptance_criteria_verbatim": "TICKET-PROOF-LYSI-9 " + ("body " * 800),
+            "comments": [],
+        },
+        {
+            "key": "LYSI-10",
+            "goal": "suite",
+            "issuetype": "Anomalie",
+            "status": "Ouvert",
+            "acceptance_criteria_verbatim": "TICKET-PROOF-LYSI-10 " + ("body " * 800),
+            "comments": [],
+        },
+    ]
+    fat.pages = [
+        {"title": "Page A", "body": "CONFLUENCE-PROOF-A " + ("page " * 600)},
+        {"title": "Page B", "body": "CONFLUENCE-PROOF-B " + ("page " * 600)},
+        {"title": "Page C", "body": "CONFLUENCE-PROOF-C " + ("page " * 600)},
+    ]
+    fat.code = [
+        {
+            "location": "src/InvoiceService.php:88",
+            "file": "src/InvoiceService.php",
+            "text": ROOT_CAUSE + "\n" + ("x" * 200),
+        }
+    ]
+    unbounded = fat.markdown(cap=200_000)
+    legacy = unbounded[:12_000]
+    packed = fat.markdown()
+    check("slicing global perd le code", ROOT_CAUSE not in legacy)
+    check("slicing global perd les trous", "HOLE-missing-stacktrace-worker-7" not in legacy)
+    check("budget respecté", len(packed) <= 12_000)
+    check("root cause conservée", ROOT_CAUSE in packed)
+    check("preuve ticket", "TICKET-PROOF-LYSI-9" in packed)
+    check("preuve confluence", "CONFLUENCE-PROOF-A" in packed)
+    check("preuve capture", "CAPTURE-PROOF-0" in packed)
+    check("holes conservés", "HOLE-missing-stacktrace-worker-7" in packed)
+    check("errors conservées", "LYSI-9: timeout" in packed)
+    check("instructions conservées", "## À l'orchestrateur" in packed)
 
     names = {item["name"] for item in TOOLS}
     check("deux outils", names == {"scout", "scout_ping"})
@@ -147,6 +202,86 @@ def main() -> None:
     check("sans scout = jira pas ocr", paths["without_scout"]["text_chars"] == 6000)
     check("avec scout = visible", paths["with_scout"]["visible_chars"] == 1000)
     check("png hors prompt avec scout", paths["with_scout"]["png_in_prompt"] is False)
+
+    check("want_llm default", want_llm({}) is False)
+    check("want_llm use_llm", want_llm({"use_llm": True}) is True)
+    check("want_llm no_llm false", want_llm({"no_llm": False}) is True)
+    check("want_llm no_llm true", want_llm({"no_llm": True}) is False)
+
+    ping_text = format_ping()
+    check("ping compact", ping_text.startswith("ok\n") and "version:" in ping_text and "git:" in ping_text)
+    check("ping sans config", "repo_root" not in ping_text and "mlx" not in ping_text.lower())
+    check("ping via handle", _handle("scout_ping", {}) == ping_text)
+
+    scout_props = next(item["inputSchema"]["properties"] for item in TOOLS if item["name"] == "scout")
+    check("out absent du schéma", "out" not in scout_props)
+    check("use_llm dans le schéma", "use_llm" in scout_props)
+
+    import local_agent.scout.engine as engine_mod
+    from local_agent.mlx import Completion
+
+    tmp = Path(tempfile.mkdtemp())
+    (tmp / "src").mkdir()
+    original_mlx = engine_mod.MlxClient
+
+    class BoomClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("MlxClient must not be constructed on the MCP default path")
+
+    engine_mod.MlxClient = BoomClient
+    try:
+        default_payload = _handle("scout", {"mission": "Inventaire local sans ticket.", "repo": str(tmp)})
+    finally:
+        engine_mod.MlxClient = original_mlx
+    envelope = default_payload.split("---", 1)[0]
+    check("MCP défaut sans crash LLM", "ready_for_diagnosis:" in envelope)
+    check("MCP envelope sans path", "path:" not in envelope)
+    check("MCP envelope sans visible_chars", "visible_chars" not in envelope)
+    check("MCP envelope sans jira_chars", "jira_chars" not in envelope)
+    check("MCP envelope sans mlx_used", "mlx_used" not in envelope)
+    check("MCP envelope sans tickets:", "tickets:" not in envelope)
+
+    evil = Path(tempfile.mkdtemp()) / "must-not-exist"
+    engine_mod.MlxClient = BoomClient
+    try:
+        _handle(
+            "scout",
+            {
+                "mission": "Inventaire local sans ticket.",
+                "repo": str(tmp),
+                "out": str(evil),
+            },
+        )
+    finally:
+        engine_mod.MlxClient = original_mlx
+    check("out MCP ignoré", not evil.exists())
+    check("écriture sous le repo", any(tmp.glob("temp/scout/*/dossier.md")))
+
+    class FakeClient:
+        complete_calls = 0
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def models(self):
+            return ["qwen"]
+
+        def complete(self, prompt, system, **kwargs):
+            FakeClient.complete_calls += 1
+            return Completion(text="synthèse locale de test", prompt_tokens=3, completion_tokens=5)
+
+    FakeClient.complete_calls = 0
+    engine_mod.MlxClient = FakeClient
+    try:
+        llm_payload = _handle(
+            "scout",
+            {"mission": "Inventaire local sans ticket.", "repo": str(tmp), "use_llm": True},
+        )
+    finally:
+        engine_mod.MlxClient = original_mlx
+    check("MCP use_llm appelle complete", FakeClient.complete_calls == 1)
+    check("synthèse MCP", "synthèse locale de test" in llm_payload)
+
     print("test_scout OK")
 
 

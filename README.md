@@ -2,26 +2,32 @@
 
 ![Keep large context local. Send the orchestrator only what matters.](docs/architecture.jpg)
 
-One local pass over Jira, screenshots, Confluence and `rg`. Cursor / Claude Code see a **bounded dossier** (≤ 12 000 characters), not fourteen MCP tool schemas and not the PNGs.
-
 > Keep large context local. Send the orchestrator only what matters.
 
-Successor of [local-agent](https://github.com/TheBenBenJ/local-agent). The 14-tool MCP (`local_task`, `local_expand`, …) is gone: those schemas were billed every turn. Fine-grained tools remain on the **CLI**, outside the chat.
+A local evidence-gathering layer for AI coding agents. One pass over Jira, screenshots, Confluence and `rg`. The orchestrator receives **one compact dossier**, not fourteen MCP tools and not the PNGs.
+
+```text
+Orchestrator
+    |
+    | one mission
+    v
+local-scout
+    |
+    + Jira
+    + screenshots / OCR
+    + Confluence
+    + repo search
+    |
+    v
+one compact dossier
+    |
+    v
+Orchestrator diagnoses
+```
 
 It does not replace the orchestrator. Diagnosis, qualification and patches stay there.
 
-## Why
-
-Per-call interception does not save a Cursor conversation. A 14-tool MCP plus `expand` on every turn costs more than it hides. Scout inverts the flow:
-
-```text
-scout(mission="LYSI-6476 …", ticket="LYSI-6476")
-→ Jira + OCR + Confluence + rg, on the machine
-→ dossier ≤ 12 000 characters
-→ the orchestrator diagnoses
-```
-
-Do not enable the old `local-agent` MCP next to this one.
+Do not enable the old [local-agent](https://github.com/TheBenBenJ/local-agent) MCP next to this one.
 
 ## Quick start
 
@@ -30,13 +36,12 @@ git clone https://github.com/TheBenBenJ/local-scout ~/.local-scout
 ~/.local-scout/install.sh
 ```
 
-Requires Python 3.9+ (stdlib only), `ripgrep`, `git`, and an OpenAI-compatible local server (`mlx-serve` on Apple Silicon is what we measure against). Restart Cursor / Claude Code, then call `scout_ping`.
+Requires Python 3.9+ (stdlib only), `ripgrep`, `git`. A local OpenAI-compatible server (`mlx-serve` on Apple Silicon) is optional: the MCP path is **deterministic by default** (0 local LLM). Restart Cursor / Claude Code, then call `scout_ping`.
 
 ```bash
-~/.local-scout/bin/local-scout --ticket LYSI-6476
 ~/.local-scout/bin/local-scout --ticket LYSI-6476 --no-llm
+~/.local-scout/bin/local-scout --ticket LYSI-6476
 ~/.local-scout/bin/local-scout doctor
-~/.local-scout/bin/local-scout bench --ticket LYSI-6476 --out temp/scout/bench
 ```
 
 Install writes `local-scout` into `~/.cursor/mcp.json` and `~/.claude.json`, and removes `local-agent` if it was still registered.
@@ -47,35 +52,36 @@ Two tools only:
 
 | Tool | Role |
 | --- | --- |
-| `scout` | Gather locally, return one dossier |
-| `scout_ping` | Liveness (repo, OCR, MLX). No LLM |
+| `scout` | Gather locally, return one dossier. Default: no local LLM. Pass `use_llm=true` to add a 9B synthesis. |
+| `scout_ping` | Liveness. Version and git head. No LLM. |
 
-After `scout` has answered: do not Read the PNGs, do not re-fetch Jira, do not Read `dossier.md` a second time.
+After `scout` has answered: do not Read the PNGs, do not re-fetch Jira, do not Read `dossier.md` a second time. The dossier is also written under `temp/scout/<key>/` in the target repo for debug. That path is not returned over MCP.
+
+End-to-end session protocol (A / B / C): [`docs/session-bench.md`](docs/session-bench.md).
 
 ## CLI
 
-Same binary. Subcommands that used to live on `local-agent` (`doctor`, `ping`, `task`, `expand`, `image`, …) are on `local-scout`. They never appear as MCP schemas.
+Same binary. Subcommands that used to live on `local-agent` (`doctor`, `ping`, `task`, `expand`, `image`, …) are on `local-scout`. They never appear as MCP schemas. `--out` is CLI-only.
 
 ```bash
 ~/.local-scout/bin/local-scout ping
 ~/.local-scout/bin/local-scout doctor
 ~/.local-scout/bin/local-scout task "Find the root cause." --source log://var/bench.log
-~/.local-scout/bin/local-scout expand LOG-E1
 ```
 
 `bin/local-agent` still forwards to `local-scout` so old scripts do not break.
 
 ## Measured Cursor session (LYSI-6476)
 
-Same model (`cursor-grok-4.6-high-fast`), two fresh chats, then the **same** 15-line diagnosis prompt. Usage **rows**, not the 7-day account total.
+In **one** measured Cursor session, diagnosing from a **pre-built** scout dossier used 59% less reported usage than direct retrieval (Jira over HTTP + five PNG Reads). Same model (`cursor-grok-4.6-high-fast`), two fresh chats, then the same 15-line diagnosis prompt. Usage **rows**, not the 7-day account total.
 
-| Phase | Without scout (A) | Dossier already on disk (B) | A − B |
+| Phase | Without scout (direct retrieval) | Pre-built `dossier.md` on disk | Difference |
 | --- | ---: | ---: | ---: |
 | Gather | 422.7 k | 60.5 k | 362.2 k |
 | Analyse (15 lines + grep) | 380.3 k | 267.8 k | 112.5 k |
 | **Session** | **803.0 k** | **328.3 k** | **474.7 k (59 %)** |
 
-A loaded Jira over HTTP and Read five PNGs. B Read `dossier.md` once (produced earlier by the CLI in 12.5 s; 9B tokens stay on the machine). This is not a full `/analyse` recette. Detail: [`docs/scout.md`](docs/scout.md).
+This is not “local-scout saves 59% tokens” in general. The cheap side did **not** call `scout` in-chat: the dossier was produced earlier by the CLI (12.5 s; 9B tokens stayed on the machine). It is not a full `/analyse` recette. A session that pays the MCP schema tax **and** calls `scout` once is a different measurement: see [`docs/session-bench.md`](docs/session-bench.md).
 
 Source-context interception in [`BENCHMARKS.md`](BENCHMARKS.md) is a different meter. Do not convert it into Cursor billing.
 
@@ -85,7 +91,7 @@ Credentials are not stored here. They come from the **target repo's** `.claude/.
 
 ## Model
 
-Recommended default: **`mlx-community/Qwen3.5-9B-MLX-4bit`**. Keep one model loaded. Scout synthesis is optional (`--no-llm` is deterministic extract only).
+Recommended checkpoint when `use_llm=true` or the CLI omits `--no-llm`: **`mlx-community/Qwen3.5-9B-MLX-4bit`**. Keep one model loaded. MCP synthesis is opt-in.
 
 Images: OCR on disk first. PNGs stay out of the chat.
 
@@ -112,7 +118,7 @@ python3 ~/.local-scout/tests/test_scout.py
 
 ## Development
 
-Public version: **1.5.0** (`local_agent/version.py`). Python package name remains `local_agent` (extractors, OCR, store). Product and MCP name: `local-scout`.
+Public version: **1.5.1** (`local_agent/version.py`). Python package name remains `local_agent`. Product and MCP name: `local-scout`.
 
 After MCP code changes, restart the client.
 

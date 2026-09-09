@@ -9,8 +9,7 @@ from pathlib import Path
 
 from ..config import get_config
 from ..files import GuardrailError
-from ..mlx import MlxClient, MlxError
-from ..ocr import backend_status
+from ..mlx import MlxError
 from ..version import SERVER_VERSION, git_head
 from .engine import run_scout
 
@@ -21,42 +20,31 @@ SUPPORTED_PROTOCOLS = {"2024-11-05", "2025-03-26", "2025-06-18"}
 TOOLS = [
     {
         "name": "scout_ping",
-        "description": "Vérifie que le scout et le dépôt sont utilisables. N'appelle pas le LLM.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "repo": {
-                    "type": "string",
-                    "description": "Racine git si ce n'est pas LOCAL_AGENT_REPO_ROOT.",
-                }
-            },
-        },
+        "description": "Liveness. No LLM.",
+        "inputSchema": {"type": "object", "properties": {}},
     },
     {
         "name": "scout",
         "description": (
-            "Déblaie le terrain en local (Jira, Confluence, OCR, rg) puis rend UN dossier borné. "
-            "Premier et presque seul appel d'un chat d'analyse. "
-            "Ne pas enchaîner avec local_task / local_expand / Read des sources listées. "
-            "Le diagnostic se fait ensuite à partir du dossier uniquement."
+            "Gather Jira, Confluence, OCR and rg locally. Returns one bounded dossier. "
+            "Call once, then diagnose from that text. Do not re-read listed sources."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "mission": {
                     "type": "string",
-                    "description": "Ce que le diagnostic devra trancher, plus la clé ticket s'il y en a une.",
+                    "description": "What the diagnosis must decide, plus the ticket key if any.",
                 },
-                "ticket": {"type": "string", "description": "LYSI-XXXX si déjà connue"},
+                "ticket": {"type": "string", "description": "LYSI-XXXX if already known"},
                 "sources": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Pointeurs optionnels jira://, confluence://, chemins repo",
+                    "description": "Optional jira://, confluence://, repo paths",
                 },
-                "out": {"type": "string", "description": "Dossier de sortie relatif au dépôt"},
-                "no_llm": {
+                "use_llm": {
                     "type": "boolean",
-                    "description": "true = extract déterministe seulement, sans synthèse 9B",
+                    "description": "true = add a local 9B synthesis. Default false.",
                 },
                 "repo": {"type": "string"},
             },
@@ -64,6 +52,31 @@ TOOLS = [
         },
     },
 ]
+
+
+def want_llm(arguments: dict) -> bool:
+    if "use_llm" in arguments:
+        return bool(arguments.get("use_llm"))
+    if "no_llm" in arguments:
+        return not bool(arguments.get("no_llm"))
+    return False
+
+
+def format_ping() -> str:
+    head = (git_head() or "")[:7]
+    return f"ok\nversion: {SERVER_VERSION}\ngit: {head}\n"
+
+
+def format_scout(result) -> str:
+    ready = not result.errors
+    lines = [f"ready_for_diagnosis: {str(ready).lower()}"]
+    markdown = result.markdown or ""
+    listed = "## Trous" in markdown or "## Erreurs" in markdown
+    if not ready and result.errors and not listed:
+        lines.append("errors:")
+        lines.extend(f"- {error}" for error in result.errors)
+    lines.append("---")
+    return "\n".join(lines) + "\n" + markdown
 
 
 def _config(arguments: dict):
@@ -77,57 +90,21 @@ def _config(arguments: dict):
 
 
 def _handle(name: str, arguments: dict) -> str:
-    config = _config(arguments)
     if name == "scout_ping":
-        mlx_ok = False
-        mlx_error = ""
-        try:
-            MlxClient(config).models()
-            mlx_ok = True
-        except MlxError as error:
-            mlx_error = str(error)
-        payload = {
-            "alive": True,
-            "server": SERVER_NAME,
-            "version": SERVER_VERSION,
-            "git_head": git_head(),
-            "repo_root": str(config.repo_root),
-            "ocr": (backend_status() or {}).get("preferred"),
-            "mlx_reachable": mlx_ok,
-            "mlx_error": mlx_error or None,
-            "usage": "Call scout once with the ticket/mission. Do not orchestrate local-agent tools.",
-        }
-        return json.dumps(payload, ensure_ascii=False, indent=2)
+        return format_ping()
     if name != "scout":
         raise ValueError(f"unknown tool: {name}")
     mission = str(arguments.get("mission") or "").strip()
     if not mission:
         raise ValueError("mission is required")
     result = run_scout(
-        config,
+        _config(arguments),
         mission,
         ticket=str(arguments.get("ticket") or "").strip() or None,
         sources=list(arguments.get("sources") or []),
-        out=str(arguments.get("out") or "").strip() or None,
-        no_llm=bool(arguments.get("no_llm")),
+        no_llm=not want_llm(arguments),
     )
-    ledger = result.ledger or {}
-    header = (
-        f"ready_for_diagnosis: true\n"
-        f"path: {result.dossier_path}\n"
-        f"tickets: {', '.join(result.tickets) or '(aucun)'}\n"
-        f"visible_chars: {result.visible_chars}\n"
-        f"source_text_chars: {result.raw_chars}\n"
-        f"jira_chars: {ledger.get('jira_chars', 0)}\n"
-        f"ocr_chars: {ledger.get('ocr_chars', 0)}\n"
-        f"image_bytes: {ledger.get('image_bytes', 0)}\n"
-        f"mlx_used: {str(result.mlx_used).lower()}\n"
-        f"mlx_prompt_tokens: {result.mlx_prompt_tokens}\n"
-        f"mlx_completion_tokens: {result.mlx_completion_tokens}\n"
-        f"errors: {len(result.errors)}\n"
-        "---\n"
-    )
-    return header + result.markdown
+    return format_scout(result)
 
 
 class Server:
