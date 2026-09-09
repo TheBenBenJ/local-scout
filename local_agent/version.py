@@ -5,8 +5,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-SERVER_NAME = "local-agent"
-SERVER_VERSION = "1.3.0"
+SERVER_NAME = "local-scout"
+SERVER_VERSION = "1.5.0"
 ROOT = Path(__file__).resolve().parent.parent
 
 

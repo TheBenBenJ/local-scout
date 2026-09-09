@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 
 TOOL_ROOT = Path(__file__).resolve().parent.parent
-AGENT = str(TOOL_ROOT / "bin" / "local-agent")
+AGENT = str(TOOL_ROOT / "bin" / "local-scout")
 DEFAULT_CASES = TOOL_ROOT / "tests" / "cases.json"
 
 

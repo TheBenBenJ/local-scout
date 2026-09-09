@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Point d'entrée du serveur MCP stdio du local-agent."""
+"""MCP 15 outils retiré. Utiliser bin/local-scout-mcp (scout, scout_ping)."""
 
 import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from local_agent.mcp import main  # noqa: E402
-
-if __name__ == "__main__":
-    main()
+print(
+    "local-agent MCP has been removed. Use ~/.local-scout/bin/local-scout-mcp "
+    "(tools: scout, scout_ping).",
+    file=sys.stderr,
+)
+sys.exit(2)

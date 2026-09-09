@@ -76,11 +76,8 @@ def fetch(key: str, repo_root: Path | None = None) -> dict:
     description = fields.get("description")
     if isinstance(description, dict):
         description = _adf_text(description)
-    attachments = [
-        str(item.get("filename") or "")
-        for item in (fields.get("attachment") or [])
-        if item.get("filename")
-    ]
+    raw_attachments = fields.get("attachment") or []
+    attachments = [str(item.get("filename") or "") for item in raw_attachments if item.get("filename")]
     return {
         "configured": True,
         "key": key,
@@ -92,4 +89,51 @@ def fetch(key: str, repo_root: Path | None = None) -> dict:
         "components": [item.get("name") for item in (fields.get("components") or []) if item.get("name")],
         "attachments": attachments[:20],
         "open_questions": [],
+        "attachment_files": [
+            {
+                "filename": str(item.get("filename") or ""),
+                "mime": str(item.get("mimeType") or ""),
+                "content": str(item.get("content") or ""),
+            }
+            for item in raw_attachments
+            if item.get("filename") and item.get("content")
+        ][:20],
     }
+
+
+_IMAGE_SUFFIX = (".png", ".jpg", ".jpeg", ".webp", ".gif")
+
+
+def save_images(packed: dict, dest: Path, repo_root: Path | None = None, *, limit: int = 8) -> list[Path]:
+    """Écrit les PNG déjà décrits par fetch(). Pas de second GET ticket."""
+    if packed.get("error"):
+        return []
+    creds = atlassian.credentials(repo_root)
+    dest = Path(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    saved: list[Path] = []
+    for item in packed.get("attachment_files") or []:
+        name = str(item.get("filename") or "")
+        url = str(item.get("content") or "")
+        if not name or not url:
+            continue
+        if Path(name).suffix.lower() not in _IMAGE_SUFFIX:
+            continue
+        target = dest / Path(name).name
+        request = urllib.request.Request(url)
+        atlassian.authorize(request, creds)
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                target.write_bytes(response.read())
+        except (urllib.error.HTTPError, urllib.error.URLError, OSError):
+            continue
+        if target.is_file() and target.stat().st_size > 0:
+            saved.append(target)
+        if len(saved) >= limit:
+            break
+    return saved
+
+
+def download_images(key: str, dest: Path, repo_root: Path | None = None, *, limit: int = 8) -> list[Path]:
+    """Télécharge les pièces image d'un ticket. Chemins absolus pour l'OCR."""
+    return save_images(fetch(key, repo_root), dest, repo_root, limit=limit)

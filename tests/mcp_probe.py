@@ -7,9 +7,9 @@ Les appels vivent dans `cases.json`, sous la clé `sonde`, et visent ce dépôt 
 sonder un dépôt de travail avec ses propres chemins, copier ce fichier en `cases.local.json` (ignoré
 par git) et passer `--cases`.
 
-    python3 ~/.local-agent/tests/mcp_probe.py
-    python3 ~/.local-agent/tests/mcp_probe.py --quick
-    python3 ~/.local-agent/tests/mcp_probe.py --repo /chemin/vers/le/depot
+    python3 ~/.local-scout/tests/mcp_probe.py
+    python3 ~/.local-scout/tests/mcp_probe.py --quick
+    python3 ~/.local-scout/tests/mcp_probe.py --repo /chemin/vers/le/depot
 """
 
 from __future__ import annotations

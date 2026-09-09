@@ -1,4 +1,4 @@
-"""Diagnostic local-agent : MCP, serveur LLM, outils systeme, store. Aucune ecriture destructive."""
+"""Diagnostic local-scout : MCP, serveur LLM, outils systeme, store. Aucune ecriture destructive."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def check(config: Config, client: MlxClient | None = None) -> dict:
     add("code", bool(identity.get("git_head") or identity.get("version")), f"{identity.get('version')} {identity.get('git_head')}".strip())
     add("rg", bool(shutil.which("rg")), shutil.which("rg") or "ripgrep missing")
     add("git", bool(shutil.which("git")), shutil.which("git") or "git missing")
-    mcp = Path(__file__).resolve().parent.parent / "bin" / "local-agent-mcp"
+    mcp = Path(__file__).resolve().parent.parent / "bin" / "local-scout-mcp"
     add("mcp", mcp.is_file(), str(mcp))
     add("repo_root", config.repo_root.is_dir(), str(config.repo_root))
     add("session", True, store.current_session())
@@ -75,7 +75,7 @@ def check(config: Config, client: MlxClient | None = None) -> dict:
 
 
 def render(payload: dict) -> str:
-    lines = ["LOCAL-AGENT DOCTOR", ""]
+    lines = ["LOCAL-SCOUT DOCTOR", ""]
     for item in payload.get("checks") or []:
         mark = "ok" if item.get("ok") else "FAIL"
         lines.append(f"[{mark}] {item.get('name')}: {item.get('detail')}")
