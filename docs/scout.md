@@ -23,6 +23,26 @@ git clone https://github.com/TheBenBenJ/local-scout ~/.local-scout
 MCP : `scout` et `scout_ping` uniquement. `scout` est déterministe par défaut.
 `--out` n'existe que sur la CLI.
 
+Un appel par mission. Diagnostiquer depuis le dossier. Relire seulement
+les paths marqués tronqués, `re-read_allowed`, ou les ids demandés en
+drill-down. `sources` est une liste fermée : un fichier = ce fichier,
+un dossier = son index. PDF : objets Annot d'abord, jamais un OCR du
+document « au cas où ». Ticket Jira seulement si `ticket` est fourni.
+
+Schémas de source : `repo://`, `jira://`, `confluence://`, `image://`,
+`log://<chemin>` (fichier local, échecs + contexte gardés, bruit répétitif
+dédupliqué), `ci://gitlab/<projet>/<job_id>` (trace de job GitLab, même
+filtrage que `log://`, crédentiels dans `.claude/.env.local` : `GITLAB_URL`,
+`GITLAB_TOKEN`, `GITLAB_PROJECT_ID`), `git://<motif>` (branches locales dont
+le nom ou l'historique porte le motif, avec leur statut de fusion vers
+main/master/develop — ramassage seulement, pas d'avis sur la bonne branche).
+
+OCR d'abord pour les captures. Avec `use_llm=true` et un modèle qui déclare la
+vision, jusqu'à 3 captures par mission dont l'OCR ne suffit pas (transcript
+vide, ou la mission évoque un trou de layout : en-tête fusionné, filtre,
+bouton disabled) reçoivent une seconde passe vision, layout seulement — les
+chiffres restent ceux de l'OCR.
+
 ```
 scout(mission="Diagnostiquer LYSI-6476 …", ticket="LYSI-6476")
 ```
@@ -39,6 +59,7 @@ Sortie disque : `temp/scout/<clé>/dossier.md` dans le dépôt cible (debug).
 Le chemin n'est pas renvoyé dans la réponse MCP.
 
 Protocole de session A/B/C : [`session-bench.md`](session-bench.md).
+Prompts terrain 6160 / 6417 / 6553 + grille : [`session-prompts.md`](session-prompts.md).
 
 ## Mesure Cursor (LYSI-6476, 9 sept 2026)
 

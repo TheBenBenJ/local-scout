@@ -48,6 +48,13 @@ Success on this case: `C < A` by a clear margin **and** quality C ≥ quality A.
 
 A / B / C must run as **three fresh chats**. They cannot share the conversation that implemented the code. Fill the table below when those chats exist.
 
+Replay prompts for the later terrain tickets (6160, 6417, 6553) and the dossier scoring harness: [`session-prompts.md`](session-prompts.md).
+
+```bash
+~/.local-scout/bin/local-scout bench --print-prompt LYSI-6553-c2
+~/.local-scout/bin/local-scout bench --cases --repo /chemin/vers/lysi --out temp/scout/bench-terrain
+```
+
 | | A | B | C |
 | --- | --- | --- | --- |
 | input | | | |

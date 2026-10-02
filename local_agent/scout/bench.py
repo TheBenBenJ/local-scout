@@ -14,6 +14,15 @@ from ..files import GuardrailError
 from ..mlx import MlxClient, MlxError
 from .engine import ScoutResult, run_scout
 from .compare import compare_paths
+from .cases import (
+    CASES,
+    DEFAULT_CASE_IDS,
+    get_case,
+    render_score,
+    resolve_sources,
+    score_markdown,
+    score_to_dict,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,10 +30,20 @@ def build_parser() -> argparse.ArgumentParser:
         prog="local-scout bench",
         description="Mesure locale du scout. N'invente pas de cartes Cursor.",
     )
-    parser.add_argument("--ticket", required=True, help="LYSI-XXXX")
+    parser.add_argument("--ticket", default="", help="LYSI-XXXX (run libre, sans grille)")
     parser.add_argument("--mission", default="", help="mission passée au scout")
     parser.add_argument("--out", default="temp/scout/bench", help="dossier de sortie")
     parser.add_argument("--no-llm", action="store_true", help="sans synthèse 9B")
+    parser.add_argument("--repo", default="", help="dépôt client (sinon LOCAL_AGENT_REPO_ROOT / cwd)")
+    parser.add_argument(
+        "--case",
+        action="append",
+        dest="cases",
+        help="cas terrain (LYSI-6160, LYSI-6417-pdf, LYSI-6417-dir, LYSI-6553-c1, LYSI-6553-c2)",
+    )
+    parser.add_argument("--cases", action="store_true", dest="all_cases", help="tous les cas terrain")
+    parser.add_argument("--print-prompt", metavar="CASE", help="afficher le prompt de conversation")
+    parser.add_argument("--score-dossier", metavar="FILE", help="noter un dossier.md déjà produit")
     parser.add_argument(
         "--compare-nolm",
         action="store_true",
@@ -178,13 +197,156 @@ def run_bench(
     return payload
 
 
+def _config_with_repo(repo: str):
+    config = get_config()
+    override = (repo or "").strip()
+    if override and "${" not in override:
+        from dataclasses import replace
+
+        config = replace(config, repo_root=Path(override).expanduser().resolve())
+    return config
+
+
+def run_case(config: Config, case_id: str, *, out_dir: Path, no_llm: bool = True, client=None) -> dict:
+    case = get_case(case_id)
+    sources, missing = resolve_sources(config.repo_root, case)
+    if missing:
+        return {
+            "case": case.id,
+            "skipped": True,
+            "reason": missing,
+            "score": None,
+        }
+    result = run_scout(
+        config,
+        case.mission,
+        ticket=case.ticket,
+        sources=sources or None,
+        out=str(out_dir / case.id),
+        no_llm=no_llm,
+        client=client,
+    )
+    envelope = ""
+    try:
+        from .mcp import format_scout
+
+        envelope = format_scout(result)
+    except Exception:  # noqa: BLE001
+        envelope = result.markdown
+    scored = score_markdown(envelope, case, mode="live", ready=result.ready)
+    payload = result_payload(result)
+    payload["case"] = case.id
+    payload["title"] = case.title
+    payload["mission"] = case.mission
+    payload["sources"] = sources
+    payload["skipped"] = False
+    payload["score"] = score_to_dict(scored)
+    payload["score_md"] = render_score(scored)
+    return payload
+
+
+def run_case_suite(config: Config, case_ids: list[str], *, out: str, no_llm: bool = True, client=None) -> dict:
+    out_dir = Path(out).expanduser() if out else (config.repo_root / "temp" / "scout" / "bench")
+    if not out_dir.is_absolute():
+        out_dir = config.repo_root / out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for ident in case_ids:
+        rows.append(run_case(config, ident, out_dir=out_dir, no_llm=no_llm, client=client))
+    scored = [item for item in rows if item.get("score")]
+    payload = {
+        "date": date.today().isoformat(),
+        "repo": str(config.repo_root),
+        "cases": rows,
+        "summary": {
+            "ran": len(scored),
+            "skipped": sum(1 for item in rows if item.get("skipped")),
+            "ok": sum(1 for item in scored if (item.get("score") or {}).get("ok")),
+            "mean_pct": round(
+                sum((item.get("score") or {}).get("pct") or 0 for item in scored) / len(scored), 1
+            )
+            if scored
+            else 0.0,
+        },
+        "cursor": {
+            "note": "Cartes Usage : les remplir dans docs/session-prompts.md, pas ici.",
+        },
+    }
+    md_parts = [
+        f"# Bench cas terrain\n\nDate : {payload['date']}. Repo : `{payload['repo']}`.\n",
+        f"Joués {payload['summary']['ran']}, skip {payload['summary']['skipped']}, "
+        f"OK {payload['summary']['ok']}, moyenne {payload['summary']['mean_pct']} %.\n",
+    ]
+    for item in rows:
+        if item.get("skipped"):
+            md_parts.append(f"## {item.get('case')} — skip\n\n{item.get('reason')}\n")
+            continue
+        md_parts.append(item.get("score_md") or "")
+        md_parts.append("")
+    (out_dir / "cases.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (out_dir / "cases.md").write_text("\n".join(md_parts).rstrip() + "\n", encoding="utf-8")
+    payload["path"] = str(out_dir / "cases.md")
+    return payload
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
-    config = get_config()
+    if arguments.print_prompt:
+        case = get_case(arguments.print_prompt)
+        print(case.prompt, end="" if case.prompt.endswith("\n") else "\n")
+        return 0
+    config = _config_with_repo(arguments.repo)
+    out_dir = Path(arguments.out).expanduser()
+    if not out_dir.is_absolute():
+        out_dir = config.repo_root / out_dir
+
+    if arguments.score_dossier:
+        if not arguments.cases:
+            print("local-scout bench : --score-dossier exige --case ID", file=sys.stderr)
+            return 2
+        case = get_case(arguments.cases[0])
+        text = Path(arguments.score_dossier).expanduser().read_text(encoding="utf-8")
+        scored = score_markdown(text, case, mode="live")
+        print(render_score(scored))
+        print(json.dumps(score_to_dict(scored), ensure_ascii=False, indent=2))
+        return 0 if scored.ok else 1
+
+    case_ids = list(arguments.cases or [])
+    if arguments.all_cases:
+        case_ids = list(DEFAULT_CASE_IDS)
+    if case_ids:
+        try:
+            payload = run_case_suite(
+                config,
+                case_ids,
+                out=arguments.out,
+                no_llm=True,
+                client=MlxClient(config),
+            )
+        except (GuardrailError, MlxError, ValueError) as error:
+            print(f"local-scout bench : {error}", file=sys.stderr)
+            return 1
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        print(f"\n# écrit {payload.get('path')}", file=sys.stderr)
+        failed = [
+            item
+            for item in payload.get("cases") or []
+            if not item.get("skipped") and not (item.get("score") or {}).get("ok")
+        ]
+        return 1 if failed else 0
+
+    ticket = (arguments.ticket or "").strip()
+    if not ticket:
+        print(
+            "local-scout bench : --ticket LYSI-XXXX, ou --cases, ou --print-prompt ID",
+            file=sys.stderr,
+        )
+        print("cas : " + ", ".join(CASES), file=sys.stderr)
+        return 2
     try:
         payload = run_bench(
             config,
-            arguments.ticket.strip(),
+            ticket,
             mission=arguments.mission,
             out=arguments.out,
             no_llm=arguments.no_llm,
@@ -195,8 +357,5 @@ def main(argv: list[str] | None = None) -> int:
         print(f"local-scout bench : {error}", file=sys.stderr)
         return 1
     print(json.dumps(payload, ensure_ascii=False, indent=2))
-    out_dir = Path(arguments.out).expanduser()
-    if not out_dir.is_absolute():
-        out_dir = config.repo_root / out_dir
     print(f"\n# écrit {out_dir / 'bench.md'}", file=sys.stderr)
     return 1 if payload.get("errors") and not payload.get("tickets") else 0

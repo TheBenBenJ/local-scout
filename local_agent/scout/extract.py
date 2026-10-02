@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from pathlib import Path
+
 from ..router import explicit_symbols
 
 LYSI_KEY = re.compile(r"\bLYSI-\d+\b", re.IGNORECASE)
@@ -14,12 +16,70 @@ CONFLUENCE_PAGE = re.compile(
 )
 CONFLUENCE_PAGES = re.compile(r"/pages/(\d{6,})", re.IGNORECASE)
 IMAGE_NAME = re.compile(r"\b(image-\d{8}-\d{6}\.(?:png|jpg|jpeg|webp))\b", re.IGNORECASE)
-REPO_FILE = re.compile(r"\b((?:src|tests|assets|config)/[A-Za-z0-9_./-]+\.(?:php|ts|twig|yml|yaml))\b")
+# Ne pas ancrer sur \b avant src/ : ça réécrit lib/bundle/src/Foo.php en src/Foo.php.
+REPO_FILE = re.compile(
+    r"(?<![A-Za-z0-9_.-])"
+    r"((?:lib|src|tests|assets|config|app)(?:/[A-Za-z0-9_.-]+)+\.(?:php|ts|twig|yml|yaml|xml))"
+)
 UUID = re.compile(
     r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",
     re.IGNORECASE,
 )
 CAMEL_IDENT = re.compile(r"\b[a-z]+[A-Z][A-Za-z0-9]{3,}\b")
+_REVIEW = re.compile(
+    r"\b(revue|review|code review|pull request|\bPR\b|merge request)\b",
+    re.IGNORECASE,
+)
+_OCR_NEED = re.compile(
+    r"\b(tableau|écran|ecran|tampon|screenshot|capture|ocr|"
+    r"image-\d{8}-\d{6}|interface utilisateur)\b",
+    re.IGNORECASE,
+)
+_ANNOT_NEED = re.compile(
+    r"\b(annot|surlign|highlight|commentaire jaune|commentaires jaunes|"
+    r"post-it|sticky note|quadpoints|free.?text|strikeout)\b",
+    re.IGNORECASE,
+)
+_PDF_TEXT_NEED = re.compile(
+    r"\b(pdftotext|texte de page|plein texte|full.?text)\b",
+    re.IGNORECASE,
+)
+_HANDWRITE_NEED = re.compile(
+    r"\b(manuscrit|note manuscrite|tampon image|handwrit)\b",
+    re.IGNORECASE,
+)
+_GREP_NEED = re.compile(r"\b(grep|ripgrep|\brg\b|où est|where is)\b", re.IGNORECASE)
+_JIRA_SEARCH = re.compile(
+    r"\b(chercher|search|doublon|ticket existant|tickets existants|jql)\b",
+    re.IGNORECASE,
+)
+_URL_UUID = re.compile(
+    r"/([A-Za-z0-9_-]{3,})/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
+    re.IGNORECASE,
+)
+_ROUTE_PARAM = re.compile(r"/\{(\w+)\}")
+_JQL_STOP = {
+    "fetch", "chercher", "search", "ticket", "existant", "existants", "même", "meme",
+    "défaut", "defaut", "doublon", "jql", "lysi", "sans", "avec", "pour", "dans",
+    "les", "des", "une", "sur", "plus", "résultats", "resultats", "conclure",
+    "absence", "mission", "sources", "commentaires", "jaunes",
+}
+_TICKET_HEAD = re.compile(
+    r"(?im)^(?:#{1,6}\s*|[*+-]\s*)?"
+    r"(user\s*story|histoire\s+utilisateur|en tant que|"
+    r"d[ée]cisions?|decisions?|"
+    r"crit[eè]res?\s+d['’ ]?acceptation|acceptance\s+criteria|"
+    r"\bac\b)\b"
+)
+_CODE_SUFFIX = {".php", ".ts", ".twig", ".yml", ".yaml", ".xml"}
+_IMAGE_SUFFIX = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+_PDF_SUFFIX = {".pdf"}
+_SOURCE_SUFFIX = _CODE_SUFFIX | _IMAGE_SUFFIX | _PDF_SUFFIX
+_CLASS_SUFFIXES = (
+    "Service", "Helper", "Factory", "Manager", "Handler", "Connector",
+    "Repository", "Entity", "Message", "Command", "Controller",
+    "Subscriber", "Provider", "Adapter",
+)
 
 _NOISE_SYMBOLS = {
     "LYSI", "Jira", "Confluence", "SILAE", "HTTP", "JSON", "UUID",
@@ -67,8 +127,179 @@ def image_names(text: str, *, limit: int = 8) -> list[str]:
     return _uniq([match.group(1) for match in IMAGE_NAME.finditer(text or "")], limit=limit)
 
 
+def prefer_full_paths(items: list[str]) -> list[str]:
+    """Garde lib/bundle/src/Foo.php et écarte le suffixe src/Foo.php."""
+    found = [item.strip().lstrip("/") for item in items if str(item or "").strip()]
+    kept: list[str] = []
+    for item in found:
+        if any(other != item and other.endswith("/" + item) for other in found):
+            continue
+        if item not in kept:
+            kept.append(item)
+    return kept
+
+
+def as_repo_path(uri: str) -> str | None:
+    """Recopie un chemin repo-relative tel quel. Jamais de réécriture src/ depuis lib/…/src/."""
+    raw = str(uri or "").strip()
+    if not raw:
+        return None
+    lowered = raw.lower()
+    if lowered.startswith(("jira://", "confluence://", "image://", "log://", "ci://", "git://")):
+        return None
+    if lowered.startswith("repo://"):
+        raw = raw.split("://", 1)[-1]
+    raw = raw.strip().lstrip("./").replace("\\", "/")
+    if Path(raw).suffix.lower() in _SOURCE_SUFFIX or "/" in raw:
+        return raw
+    return None
+
+
+def source_paths(sources: list[str] | None, *, limit: int = 12) -> list[str]:
+    found = []
+    for item in sources or []:
+        path = as_repo_path(item)
+        if path:
+            found.append(path)
+    return _uniq(prefer_full_paths(found), limit=limit)
+
+
 def repo_files(text: str, *, limit: int = 8) -> list[str]:
-    return _uniq([match.group(1) for match in REPO_FILE.finditer(text or "")], limit=limit)
+    found = [match.group(1) for match in REPO_FILE.finditer(text or "")]
+    return _uniq(prefer_full_paths(found), limit=limit)
+
+
+def is_review(text: str) -> bool:
+    return bool(_REVIEW.search(text or ""))
+
+
+def wants_ocr(mission: str, ticket_text: str = "") -> bool:
+    blob = f"{mission or ''}\n{ticket_text or ''}"
+    if image_names(blob):
+        return True
+    if wants_annots(mission):
+        return False
+    if is_review(mission) and not _OCR_NEED.search(blob):
+        return False
+    return bool(_OCR_NEED.search(blob))
+
+
+def wants_annots(text: str) -> bool:
+    return bool(_ANNOT_NEED.search(text or ""))
+
+
+def wants_pdf_text(text: str) -> bool:
+    return bool(_PDF_TEXT_NEED.search(text or ""))
+
+
+def wants_handwriting(text: str) -> bool:
+    return bool(_HANDWRITE_NEED.search(text or ""))
+
+
+def is_grep_mission(text: str) -> bool:
+    return bool(_GREP_NEED.search(text or ""))
+
+
+def wants_jira_search(text: str) -> bool:
+    return bool(_JIRA_SEARCH.search(text or ""))
+
+
+def is_ticket_diagnosis(mission: str, keys: list[str], listed: list[str]) -> bool:
+    if wants_annots(mission) or is_review(mission):
+        return False
+    if any(is_pdf_path(item) for item in listed) and not keys:
+        return False
+    return bool(keys) or wants_jira_search(mission)
+
+
+def jql_terms(text: str, *, limit: int = 6) -> list[str]:
+    found: list[str] = []
+    for token in re.findall(r"[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9']{3,}", text or ""):
+        if token.lower() in _JQL_STOP or token.upper().startswith("LYSI"):
+            continue
+        if token.lower() not in {item.lower() for item in found}:
+            found.append(token)
+        if len(found) >= limit:
+            break
+    return found
+
+
+def build_jql(mission: str, *, exclude: list[str] | None = None) -> str:
+    terms = jql_terms(mission)
+    if not terms:
+        terms = ["planification"]
+    clauses = " OR ".join(f'text ~ "{term}"' for term in terms[:6])
+    jql = f"project = LYSI AND ({clauses})"
+    keys = [key for key in (exclude or []) if key]
+    if keys:
+        jql += " AND key NOT IN (" + ", ".join(keys) + ")"
+    return jql + " ORDER BY updated DESC"
+
+
+def confluence_query(mission: str, ticket_text: str = "") -> str:
+    blob = f"{mission}\n{ticket_text}"
+    terms = jql_terms(blob, limit=4)
+    return " ".join(terms[:4]) or "planification bons"
+
+
+def url_uuid_hits(text: str) -> list[tuple[str, str]]:
+    return [(match.group(1), match.group(2).lower()) for match in _URL_UUID.finditer(text or "")]
+
+
+def route_param_after(slug: str, text: str) -> str:
+    if not slug:
+        return ""
+    match = re.search(rf"/{re.escape(slug)}/\{{(\w+)\}}", text or "")
+    return match.group(1) if match else ""
+
+
+def entity_for_route_param(param: str) -> tuple[str, str]:
+    key = (param or "").lower()
+    if key in {"salarieid", "salarie"}:
+        return "salarie", "ce n'est pas l'id de planification"
+    if key in {"planificationid", "planification"}:
+        return "planification", ""
+    if key in {"chantierid", "chantier"}:
+        return "chantier", ""
+    if key == "id":
+        return "id (à recouper)", ""
+    if param:
+        return param, ""
+    return "?", ""
+
+
+def is_code_path(relative: str) -> bool:
+    return Path(relative or "").suffix.lower() in _CODE_SUFFIX
+
+
+def is_image_path(relative: str) -> bool:
+    return Path(relative or "").suffix.lower() in _IMAGE_SUFFIX
+
+
+def is_pdf_path(relative: str) -> bool:
+    return Path(relative or "").suffix.lower() in _PDF_SUFFIX
+
+
+def ticket_focus(text: str, *, limit: int = 2200) -> tuple[str, bool]:
+    """User story + décisions + AC. Pas le ticket entier."""
+    raw = (text or "").strip()
+    if not raw:
+        return "", False
+    lines = raw.splitlines()
+    starts = [index for index, line in enumerate(lines) if _TICKET_HEAD.search(line)]
+    if not starts:
+        truncated = len(raw) > limit
+        return raw[:limit].rstrip(), truncated
+    kept: list[str] = []
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else len(lines)
+        kept.extend(lines[start:end])
+        kept.append("")
+    joined = "\n".join(kept).strip()
+    truncated = len(joined) > limit or starts[0] > 0 or len(raw) > len(joined) + 40
+    if len(joined) > limit:
+        return joined[:limit].rstrip(), True
+    return joined, truncated
 
 
 def uuids(text: str, *, limit: int = 12) -> list[str]:
@@ -82,7 +313,7 @@ def _useful(symbol: str) -> bool:
         return False
     if symbol[0].islower() and any(ch.isupper() for ch in symbol[1:]):
         return True
-    if symbol[0].isupper() and symbol.endswith(("Service", "Helper", "Factory", "Manager")):
+    if symbol[0].isupper() and symbol.endswith(_CLASS_SUFFIXES):
         return True
     return False
 

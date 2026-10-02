@@ -145,3 +145,43 @@ def fetch(page: str, repo_root: Path | None = None) -> dict:
         return _by_cql(creds, ident, None, ident)
     except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, TimeoutError) as error:
         return _error(creds, ident, error)
+
+
+def search(query: str, repo_root: Path | None = None, *, limit: int = 3) -> dict:
+    """CQL borné : titre + pageId + 1 citation. Pas le HTML."""
+    creds = atlassian.credentials(repo_root)
+    needle = (query or "").replace('"', " ").strip()
+    empty = {"configured": bool(creds["base"] and creds["token"]), "query": needle, "results": []}
+    if not creds["base"] or not creds["token"]:
+        empty["error"] = "Confluence is not configured"
+        empty["configured"] = False
+        return empty
+    if not needle:
+        empty["error"] = "requête Confluence vide"
+        return empty
+    cql = f'type=page AND text ~ "{needle[:80]}"'
+    try:
+        payload = _request(
+            creds,
+            "/wiki/rest/api/content/search",
+            {"cql": cql, "limit": str(limit), "expand": "body.storage,space"},
+        )
+    except (urllib.error.HTTPError, urllib.error.URLError, json.JSONDecodeError, TimeoutError) as error:
+        err = _error(creds, needle, error)
+        empty["error"] = err.get("error") or str(error)
+        return empty
+    packed = []
+    for item in (payload.get("results") or [])[:limit]:
+        page = _pack(str(item.get("id") or ""), item)
+        packed.append(
+            {
+                "id": page.get("id"),
+                "title": page.get("title"),
+                "space": page.get("space"),
+                "quote": (page.get("body") or "")[:400],
+            }
+        )
+    empty["results"] = packed
+    if not packed:
+        empty["error"] = f"Confluence : 0 page pour {needle!r}"
+    return empty

@@ -55,9 +55,10 @@ Two tools only:
 | `scout` | Gather locally, return one dossier. Default: no local LLM. Pass `use_llm=true` to add a 9B synthesis. |
 | `scout_ping` | Liveness. Version and git head. No LLM. |
 
-After `scout` has answered: do not Read the PNGs, do not re-fetch Jira, do not Read `dossier.md` a second time. The dossier is also written under `temp/scout/<key>/` in the target repo for debug. That path is not returned over MCP.
+After `scout` has answered: diagnose from the dossier. Re-read only paths marked truncated, or ids requested as drill-down. Do not re-read sources already included in full. The dossier is also written under `temp/scout/<key>/` in the target repo for debug. That path is not returned over MCP.
 
 End-to-end session protocol (A / B / C): [`docs/session-bench.md`](docs/session-bench.md).
+Ticket replay prompts (LYSI-6160 / 6417 / 6553) and dossier scoring: [`docs/session-prompts.md`](docs/session-prompts.md).
 
 ## CLI
 
@@ -93,7 +94,10 @@ Credentials are not stored here. They come from the **target repo's** `.claude/.
 
 Recommended checkpoint when `use_llm=true` or the CLI omits `--no-llm`: **`mlx-community/Qwen3.5-9B-MLX-4bit`**. Keep one model loaded. MCP synthesis is opt-in.
 
-Images: OCR on disk first. PNGs stay out of the chat.
+Images: OCR on disk first. PNGs stay out of the chat. When `use_llm=true` and the loaded
+checkpoint declares vision, up to 3 screenshots per mission whose OCR is weak (empty, or the
+mission hints at layout — merged headers, disabled buttons, filters) get one extra local vision
+pass. OCR numbers stay authoritative; vision only fills layout OCR cannot capture.
 
 ## Configuration
 

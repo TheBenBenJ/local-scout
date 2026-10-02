@@ -3,22 +3,29 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from .stats import SourceLedger
+from . import extract
+from . import pdf as pdf_x
 
 DOSSIER_MAX_CHARS = 12_000
 
-_HEADER = (
-    "# Dossier scout\n"
-    "Ne pas relire les sources listées. Diagnostiquer à partir de ce texte.\n"
-)
-_TAIL = (
+_TAIL_READY = (
     "## À l'orchestrateur\n"
     "- Trancher le diagnostic et la qualification.\n"
-    "- Ne pas relancer un chargement des sources déjà listées.\n"
+    "- Mesurer encore : SQL, grep, rejeu.\n"
+    "- Relire seulement les paths marqués tronqués ou les ids demandés en drill-down.\n"
+    "- Ne pas relire le brut déjà intégral.\n"
     "- Vérifier au grep les comptages et les conclusions d'absence.\n"
+)
+_TAIL_MISSED = (
+    "## À l'orchestrateur\n"
+    "- Mission non couverte : voir **Trous** et re-read_allowed.\n"
+    "- Mesurer encore : SQL, grep, rejeu.\n"
+    "- Ne pas diagnostiquer comme si les sources étaient extraites.\n"
 )
 
 
@@ -42,6 +49,26 @@ class Dossier:
     ids: list[str] = field(default_factory=list)
     holes: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    truncated_sources: list[dict] = field(default_factory=list)
+    locations: list[str] = field(default_factory=list)
+    rg_counts: dict = field(default_factory=dict)
+    sample_based: bool = False
+    absence_guard: bool = False
+    excerpt_seq: int = 0
+    annots: list[dict] = field(default_factory=list)
+    indexes: list[dict] = field(default_factory=list)
+    logs: list[dict] = field(default_factory=list)
+    branches: list[dict] = field(default_factory=list)
+    missed: list[str] = field(default_factory=list)
+    re_read_allowed: list[dict] = field(default_factory=list)
+    read_sources: list[str] = field(default_factory=list)
+    ready: bool = True
+    incidental: list[str] = field(default_factory=list)
+    typed_ids: list[dict] = field(default_factory=list)
+    jira_search: dict | None = None
+    primary_key: str = ""
+    confluence_note: str = ""
+    holes_none_ok: bool = False
     synthesis: str = ""
     raw_chars: int = 0
     mlx_used: bool = False
@@ -50,10 +77,110 @@ class Dossier:
     latency_s: float = 0.0
     ledger: SourceLedger = field(default_factory=SourceLedger)
 
+    def allow_reread(self, path: str, reason: str) -> None:
+        for item in self.re_read_allowed:
+            if item.get("path") == path:
+                return
+        self.re_read_allowed.append({"path": path, "reason": reason})
+
     def markdown(self, *, cap: int = DOSSIER_MAX_CHARS) -> str:
+        primary = [item for item in self.tickets if item.get("role") != "linked"]
+        linked = [item for item in self.tickets if item.get("role") == "linked"]
+        if not primary and self.tickets:
+            primary = list(self.tickets)
+            linked = []
         sections = [
-            _Section("mission", "## Mission", [(self.mission or "").strip() or "(vide)"], 500, 120, 3),
+            _Section("mission", "## Mission", [_mission_line(self.mission)], 400, 80, 2),
         ]
+        if primary:
+            primary_item = primary[0]
+            ticket_text, ticket_truncated = _ticket_block(primary_item, typed=self.typed_ids)
+            if ticket_truncated:
+                key = primary_item.get("key") or ""
+                self.allow_reread(
+                    f"jira://{key}" if key else "ticket",
+                    "description tronquée à ~600 caractères / 8 lignes pour l'affichage ; "
+                    "recharger le ticket pour le corps complet",
+                )
+            sections.append(_Section("ticket", "## Ticket", [ticket_text], 900, 180, 1))
+        if self.images:
+            sections.append(
+                _Section(
+                    "images",
+                    "## Captures",
+                    [_image_block(item) for item in self.images],
+                    700,
+                    120,
+                    2,
+                )
+            )
+        if linked:
+            sections.append(
+                _Section(
+                    "linked",
+                    "## Tickets liés demandés",
+                    [_linked_ticket_block(item) for item in linked],
+                    800,
+                    140,
+                    2,
+                )
+            )
+        if self.jira_search is not None:
+            sections.append(
+                _Section("jql", "## Recherche Jira", [_jira_search_block(self.jira_search)], 700, 120, 1)
+            )
+        code_items = [_code_block(item) for item in self.code[:3]]
+        code_items.extend(self.incidental[:4])
+        if code_items:
+            sections.append(_Section("code", "## Code", code_items, 1600, 200, 2))
+        if self.pages:
+            sections.append(
+                _Section("pages", "## Confluence", [_page_block(item) for item in self.pages[:2]], 600, 100, 2)
+            )
+        elif self.confluence_note:
+            sections.append(
+                _Section("pages", "## Confluence", [self.confluence_note], 200, 40, 2)
+            )
+        if self.annots:
+            sections.append(
+                _Section(
+                    "annots",
+                    "## Annots PDF",
+                    [pdf_x.render_annot(item, excerpt_id=str(item.get("id") or "")) for item in self.annots],
+                    2400,
+                    280,
+                    1,
+                )
+            )
+        if self.logs:
+            sections.append(
+                _Section("logs", "## Logs", [_log_block(item) for item in self.logs], 2400, 300, 1)
+            )
+        if self.branches:
+            sections.append(
+                _Section(
+                    "branches",
+                    "## Branches",
+                    [_branch_block(item) for item in self.branches],
+                    1200,
+                    200,
+                    2,
+                )
+            )
+        if self.indexes:
+            sections.append(
+                _Section(
+                    "indexes",
+                    "## Index dossiers",
+                    [
+                        f"### `{item.get('path')}`\n" + "\n".join(item.get("entries") or [])
+                        for item in self.indexes
+                    ],
+                    800,
+                    120,
+                    2,
+                )
+            )
         if self.synthesis.strip():
             sections.append(
                 _Section(
@@ -65,71 +192,11 @@ class Dossier:
                     8,
                 )
             )
-        if self.images:
-            sections.append(
-                _Section(
-                    "images",
-                    "## Captures (OCR)",
-                    [_image_block(item) for item in self.images],
-                    1000,
-                    160,
-                    5,
-                )
-            )
-        if self.tickets:
-            sections.append(
-                _Section(
-                    "tickets",
-                    "## Tickets",
-                    [_ticket_block(item) for item in self.tickets],
-                    1400,
-                    220,
-                    4,
-                )
-            )
-        if self.pages:
-            sections.append(
-                _Section(
-                    "pages",
-                    "## Confluence",
-                    [_page_block(item) for item in self.pages],
-                    900,
-                    140,
-                    6,
-                )
-            )
-        if self.code:
-            sections.append(
-                _Section(
-                    "code",
-                    "## Code",
-                    [_code_block(item) for item in self.code],
-                    1800,
-                    280,
-                    2,
-                )
-            )
-        if self.ids:
-            sections.append(
-                _Section(
-                    "ids",
-                    "## Identifiants déjà fournis (ne pas les chercher ailleurs)",
-                    [", ".join(self.ids)],
-                    80,
-                    0,
-                    7,
-                )
-            )
-        sections.append(
-            _Section(
-                "holes",
-                "## Trous",
-                [f"- {hole}" for hole in (self.holes or ["aucun annoncé"])],
-                350,
-                80,
-                1,
-            )
-        )
+        holes = list(self.holes) + list(self.missed)
+        if holes:
+            sections.append(_Section("holes", "## Trous", [f"- {hole}" for hole in holes], 500, 120, 1))
+        elif self.holes_none_ok:
+            sections.append(_Section("holes", "## Trous", ["- aucun"], 80, 40, 1))
         if self.errors:
             sections.append(
                 _Section(
@@ -141,7 +208,11 @@ class Dossier:
                     1,
                 )
             )
-        return _pack(_HEADER, sections, _TAIL, cap)
+        if self.locations and not self.typed_ids:
+            sections.append(
+                _Section("locations", "## Locations", [f"- {item}" for item in self.locations], 300, 60, 2)
+            )
+        return _pack(_header(self), sections, _tail(self), cap)
 
     def to_json(self) -> dict:
         return {
@@ -160,6 +231,26 @@ class Dossier:
             "ids": self.ids,
             "holes": self.holes,
             "errors": self.errors,
+            "truncated_sources": self.truncated_sources,
+            "locations": self.locations,
+            "rg_counts": self.rg_counts,
+            "sample_based": self.sample_based,
+            "ready": self.ready,
+            "missed": self.missed,
+            "re_read_allowed": self.re_read_allowed,
+            "read_sources": self.read_sources,
+            "annots": [
+                {
+                    "file": item.get("file"),
+                    "subtype": item.get("subtype"),
+                    "page": item.get("page"),
+                    "author": item.get("author"),
+                    "contents": item.get("contents"),
+                }
+                for item in self.annots
+            ],
+            "logs": self.logs,
+            "branches": self.branches,
             "synthesis": self.synthesis,
             "mlx_used": self.mlx_used,
             "mlx_prompt_tokens": self.mlx_prompt_tokens,
@@ -171,6 +262,42 @@ class Dossier:
         }
 
 
+def _header(dossier: Dossier) -> str:
+    lines = ["# Dossier scout"]
+    if dossier.sample_based:
+        lines.append("Réponse établie sur un échantillon.")
+    if dossier.absence_guard or dossier.locations:
+        locs = "; ".join(dossier.locations[:8]) if dossier.locations else "voir Locations"
+        lines.append(f"Ne pas conclure à l'absence. Locations : {locs}")
+    if dossier.re_read_allowed:
+        lines.append("re-read_allowed:")
+        for item in dossier.re_read_allowed[:12]:
+            lines.append(f"- `{item.get('path')}` : {item.get('reason')}")
+        lines.append(
+            "« Ne pas relire » ne s'applique qu'aux sources dont l'extrait est complet pour la mission."
+        )
+    elif dossier.ready:
+        lines.append(
+            "Diagnostiquer depuis ce dossier. Relire seulement les paths marqués tronqués "
+            "ou les ids demandés en drill-down. Ne pas relire le brut déjà intégral."
+        )
+    else:
+        lines.append("Mission non couverte : voir **Trous**. Ne pas relire n'est pas autorisé.")
+    if dossier.truncated_sources:
+        lines.append("Sources tronquées, l'orchestrateur peut Relire path:offset sur ces ids.")
+        for item in dossier.truncated_sources[:8]:
+            ids = ", ".join(str(name) for name in (item.get("ids") or []))
+            lines.append(
+                f"- `{item.get('path')}` : {item.get('kept_lines')}/{item.get('total_lines')} lignes, "
+                f"{item.get('kept_bytes')}/{item.get('total_bytes')} octets, extraits {ids}"
+            )
+    return "\n".join(lines) + "\n"
+
+
+def _tail(dossier: Dossier) -> str:
+    return _TAIL_READY if dossier.ready else _TAIL_MISSED
+
+
 def _clip(text: str, limit: int) -> str:
     text = (text or "").strip()
     if len(text) <= limit:
@@ -178,52 +305,186 @@ def _clip(text: str, limit: int) -> str:
     return text[:limit].rstrip() + "…"
 
 
-def _ticket_block(item: dict) -> str:
+def _mission_line(text: str) -> str:
+    raw = (text or "").strip() or "(vide)"
+    for sep in (". ", ".\n", " : ", "\n"):
+        if sep in raw:
+            raw = raw.split(sep, 1)[0].strip()
+            break
+    return raw[:220]
+
+
+def _ticket_block(item: dict, typed: list[dict] | None = None) -> tuple[str, bool]:
     key = item.get("key") or "?"
     goal = item.get("goal") or ""
     status = item.get("status") or ""
     itype = item.get("issuetype") or ""
-    body = _clip(item.get("acceptance_criteria_verbatim") or "", 2500)
-    comments = item.get("comments") or []
+    versions = ", ".join(item.get("fix_versions") or [])
+    body, focus_truncated = extract.ticket_focus(item.get("acceptance_criteria_verbatim") or "", limit=600)
+    full_lines = [line for line in body.splitlines() if line.strip()]
+    body_lines = full_lines[:8]
+    truncated = bool(focus_truncated) or len(full_lines) > len(body_lines)
     lines = [
         f"### {key} — {goal}",
-        f"Type : {itype} · Statut : {status}",
+        f"Type : {itype} · Statut : {status}" + (f" · MEP : {versions}" if versions else ""),
         "",
-        body,
-        "",
+        *body_lines,
     ]
-    if comments:
-        lines.append("Commentaires (plus récents) :")
-        for comment in comments[-4:]:
-            author = comment.get("author") or ""
-            created = comment.get("created") or ""
-            lines.append(f"- {created} {author}: {_clip(comment.get('body') or '', 400)}")
+    if typed:
         lines.append("")
-    atts = item.get("attachments") or []
-    if atts:
-        lines.append("Pièces : " + ", ".join(str(name) for name in atts[:12]))
-        lines.append("")
+        lines.append("UUID typés :")
+        for row in typed[:8]:
+            extra = f" — {row.get('note')}" if row.get("note") else ""
+            lines.append(
+                f"- `{row.get('value')}` | {row.get('role') or 'segment inconnu'} | "
+                f"{row.get('entity') or '?'}{extra}"
+            )
+    return "\n".join(lines).rstrip(), truncated
+
+
+def _linked_ticket_block(item: dict) -> str:
+    key = item.get("key") or "?"
+    goal = item.get("goal") or ""
+    status = item.get("status") or ""
+    versions = ", ".join(item.get("fix_versions") or [])
+    body_lines = [
+        line for line in (item.get("acceptance_criteria_verbatim") or "").splitlines() if line.strip()
+    ][:5]
+    lines = [
+        f"### {key} — {goal}",
+        f"Statut : {status}" + (f" · fixVersions : {versions}" if versions else ""),
+        *body_lines,
+    ]
     return "\n".join(lines).rstrip()
+
+
+def _jira_search_block(item: dict) -> str:
+    jql = item.get("jql") or ""
+    error = item.get("error")
+    results = item.get("results") or []
+    total = item.get("total")
+    lines = [f"JQL : `{jql}`"]
+    if error:
+        lines.append(f"non exécutée : {error}" if "non exécutée" not in str(error) else str(error))
+        return "\n".join(lines)
+    lines.append(f"N résultats (API) : {total if total is not None else len(results)} — 5 candidats max.")
+    for row in results[:5]:
+        lines.append(
+            f"- {row.get('key')} — {row.get('goal')} · {row.get('status')} · {row.get('issuetype')}"
+        )
+    if not results:
+        lines.append("0 candidat. Ne pas conclure à l'absence sans recouper le JQL.")
+    return "\n".join(lines)
 
 
 def _page_block(item: dict) -> str:
     title = item.get("title") or item.get("page") or "?"
-    body = _clip(item.get("body") or item.get("text") or "", 2500)
-    return f"### {title}\n\n{body}"
+    page_id = item.get("id") or item.get("page") or ""
+    quote = _clip(item.get("quote") or item.get("body") or item.get("text") or "", 400)
+    header = f"### {title}"
+    if page_id:
+        header += f" · pageId {page_id}"
+    return f"{header}\n\n{quote}"
 
 
 def _image_block(item: dict) -> str:
     name = item.get("name") or item.get("path") or "image"
-    transcript = _clip(item.get("transcript") or "", 2000)
-    return f"### {name}\n\n{transcript}"
+    table = (item.get("table") or "").strip()
+    if not table:
+        table = _compact_ocr_text(item.get("transcript") or "")
+    lines = [f"### {name}", table or "OCR inutilisable"]
+    if item.get("noisy", True) or table == "OCR inutilisable":
+        lines.append("OCR bruit, ne pas citer les tokens incertains.")
+    notes = list(item.get("vision_notes") or [])
+    ui = list(item.get("vision_ui") or [])
+    headers = list(item.get("vision_headers") or [])
+    if notes or ui or headers:
+        lines.append("Vision locale (layout seulement ; l'OCR reste la source pour les nombres) :")
+        lines.extend(f"- {note}" for note in notes[:6])
+        lines.extend(f"- UI : {entry}" for entry in ui[:6])
+        if headers:
+            lines.append("- En-têtes : " + " | ".join(headers[:12]))
+    return "\n".join(lines)
+
+
+def _compact_ocr_text(transcript: str) -> str:
+    lines = [line.strip() for line in (transcript or "").splitlines() if line.strip()]
+    keep: list[str] = []
+    for line in lines:
+        if re.search(r"0\s*(h|km)|0h|0km|durée|duree|planif|compteur|jauge", line, re.I):
+            keep.append(line[:80])
+        elif len(line) <= 42 and re.search(r"[A-Za-zÀ-ÿ]{3,}", line):
+            keep.append(line[:80])
+        if len(keep) >= 8:
+            break
+    if not keep and lines:
+        first = lines[0][:80]
+        if re.search(r"[A-Za-z0-9]{4,}", first):
+            keep.append(first)
+    if len(lines) > 25 and len(keep) < 3:
+        return "OCR inutilisable"
+    return "\n".join(keep) if keep else "OCR inutilisable"
 
 
 def _code_block(item: dict) -> str:
     loc = item.get("location") or item.get("file") or ""
-    text = (item.get("text") or "").strip()[:1200]
-    lines = [f"`{loc}`"]
+    excerpt_id = item.get("id") or ""
+    text = "\n".join((item.get("text") or "").strip().splitlines()[:15])[:1600]
+    prefix = f"`{loc}`"
+    if excerpt_id:
+        prefix += f" [{excerpt_id}]"
+    if item.get("truncated"):
+        prefix += (
+            f" tronqué {item.get('kept_lines')}/{item.get('total_lines')} lignes"
+        )
+    lines = [prefix]
     if text:
         lines.append(f"```\n{text}\n```")
+    return "\n".join(lines)
+
+
+def _log_block(item: dict) -> str:
+    label = item.get("label") or "log"
+    kept = (item.get("kept") or "").strip()
+    matches = item.get("match_count") or 0
+    header = f"### `{label}`"
+    if matches:
+        header += f" · {matches} signal(aux) d'échec"
+    else:
+        header += " · aucun signal d'échec, queue rendue"
+    if item.get("truncated"):
+        header += f" · tronqué {item.get('kept_lines')}/{item.get('total_lines')} lignes"
+    body = kept or "(vide)"
+    return f"{header}\n\n```\n{body}\n```"
+
+
+def _branch_block(item: dict) -> str:
+    pattern = item.get("pattern") or "?"
+    error = item.get("error")
+    if error:
+        return f"### `git://{pattern}`\n\nnon exécutée : {error}"
+    mains = ", ".join(item.get("main_branches") or []) or "(aucune détectée)"
+    lines = [
+        f"### `git://{pattern}` — {item.get('commit_matches', 0)} commit(s) au message, "
+        f"branches principales : {mains}"
+    ]
+    main_set = set(item.get("main_branches") or [])
+    for branch in item.get("branches") or []:
+        if branch.get("branch") in main_set:
+            merged = "branche principale"
+        else:
+            merged = ", ".join(branch.get("merged_into") or []) or "non fusionnée"
+        via = "/".join(
+            part
+            for part, flag in (("nom", branch.get("matched_name")), ("historique", branch.get("matched_history")))
+            if flag
+        ) or "?"
+        lines.append(
+            f"- `{branch.get('branch')}` — {branch.get('tip') or '?'} · "
+            f"fusionnée dans : {merged} · trouvée par : {via}"
+        )
+    if not item.get("branches"):
+        lines.append("- 0 branche candidate.")
     return "\n".join(lines)
 
 
@@ -351,6 +612,9 @@ def _pack(header: str, sections: list[_Section], tail: str, cap: int) -> str:
 def write_dossier(dossier: Dossier, out_dir: Path) -> tuple[Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     markdown = dossier.markdown()
+    if "[truncated]" in markdown or "additional items omitted" in markdown:
+        dossier.sample_based = True
+        markdown = dossier.markdown()
     payload = dossier.to_json()
     payload["visible_chars"] = len(markdown)
     payload["raw_chars"] = dossier.ledger.text_chars()
