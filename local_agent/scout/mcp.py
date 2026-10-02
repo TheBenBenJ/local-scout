@@ -26,8 +26,18 @@ TOOLS = [
     {
         "name": "scout",
         "description": (
-            "Gather Jira, Confluence, OCR and rg locally. Returns one bounded dossier. "
-            "Call once, then diagnose from that text. Do not re-read listed sources."
+            "Gather Jira, Confluence, OCR, PDF annots, CI/log failures and rg locally. "
+            "Returns one bounded dossier. Pass paths only; sources is a closed list. "
+            "If the mission asks to search/JQL/doublon/ticket existant, run JQL even when sources is set. "
+            "Un appel par mission. Diagnostiquer depuis le dossier. "
+            "Relire seulement les paths marqués tronqués ou re-read_allowed. "
+            "Ne pas relire le brut déjà intégral. "
+            "PDF: parse Annot (Highlight /Contents), never OCR a PDF as a screenshot. "
+            "Log/CI: keep failure lines + context, never the whole trace. "
+            "git://: candidate branches + merge status, not which one is right. "
+            "use_llm=true also allows one vision pass per weak-OCR screenshot (layout only, "
+            "OCR numbers stay authoritative). "
+            "Known-symbol grep: orchestrator greps, not scout. PHPStan / short check: not scout."
         ),
         "inputSchema": {
             "type": "object",
@@ -40,7 +50,10 @@ TOOLS = [
                 "sources": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Optional jira://, confluence://, repo paths",
+                    "description": (
+                        "Optional jira://, confluence://, repo paths, log://<path>, "
+                        "ci://gitlab/<project>/<job_id>, git://<pattern-or-ticket>"
+                    ),
                 },
                 "use_llm": {
                     "type": "boolean",
@@ -68,10 +81,15 @@ def format_ping() -> str:
 
 
 def format_scout(result) -> str:
-    ready = not result.errors
+    ready = bool(getattr(result, "ready", not result.errors))
     lines = [f"ready_for_diagnosis: {str(ready).lower()}"]
+    allowed = list(getattr(result, "re_read_allowed", None) or [])
+    if allowed:
+        lines.append("re-read_allowed:")
+        for item in allowed:
+            lines.append(f"- {item.get('path')}: {item.get('reason')}")
     markdown = result.markdown or ""
-    listed = "## Trous" in markdown or "## Erreurs" in markdown
+    listed = "## Trous" in markdown or "## Erreurs" in markdown or "## Manqué" in markdown
     if not ready and result.errors and not listed:
         lines.append("errors:")
         lines.extend(f"- {error}" for error in result.errors)

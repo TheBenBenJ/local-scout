@@ -47,7 +47,7 @@ def _comments(node: object) -> list[dict]:
     return packed
 
 
-def fetch(key: str, repo_root: Path | None = None) -> dict:
+def fetch(key: str, repo_root: Path | None = None, *, attachments: bool = True) -> dict:
     """Return an ISSUE CONTRACT. If Jira is not configured, explain how to add it."""
     creds = atlassian.credentials(repo_root)
     if not creds["base"] or not creds["token"]:
@@ -61,7 +61,7 @@ def fetch(key: str, repo_root: Path | None = None) -> dict:
             ),
             "key": key,
         }
-    wanted = "summary,description,status,issuetype,components,attachment,comment"
+    wanted = "summary,description,status,issuetype,components,attachment,comment,fixVersions"
     url = f"{creds['base']}/rest/api/3/issue/{key}?fields={wanted}"
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     atlassian.authorize(request, creds)
@@ -77,7 +77,7 @@ def fetch(key: str, repo_root: Path | None = None) -> dict:
     if isinstance(description, dict):
         description = _adf_text(description)
     raw_attachments = fields.get("attachment") or []
-    attachments = [str(item.get("filename") or "") for item in raw_attachments if item.get("filename")]
+    names = [str(item.get("filename") or "") for item in raw_attachments if item.get("filename")]
     return {
         "configured": True,
         "key": key,
@@ -87,17 +87,94 @@ def fetch(key: str, repo_root: Path | None = None) -> dict:
         "status": (fields.get("status") or {}).get("name"),
         "issuetype": (fields.get("issuetype") or {}).get("name"),
         "components": [item.get("name") for item in (fields.get("components") or []) if item.get("name")],
-        "attachments": attachments[:20],
+        "fix_versions": [
+            str(item.get("name") or "")
+            for item in (fields.get("fixVersions") or [])
+            if item.get("name")
+        ],
         "open_questions": [],
-        "attachment_files": [
+        "attachments": names[:20] if attachments else [],
+        "attachment_files": (
+            [
+                {
+                    "filename": str(item.get("filename") or ""),
+                    "mime": str(item.get("mimeType") or ""),
+                    "content": str(item.get("content") or ""),
+                }
+                for item in raw_attachments
+                if item.get("filename") and item.get("content")
+            ][:20]
+            if attachments
+            else []
+        ),
+    }
+
+
+def search(jql: str, repo_root: Path | None = None, *, limit: int = 5) -> dict:
+    """JQL borné. Ne dump pas les issues : key, summary, status, type, 5 lignes."""
+    query = (jql or "").strip()
+    creds = atlassian.credentials(repo_root)
+    empty = {"configured": bool(creds["base"] and creds["token"]), "jql": query, "total": 0, "results": []}
+    if not query:
+        empty["error"] = "JQL vide"
+        return empty
+    if not creds["base"] or not creds["token"]:
+        empty["error"] = "Jira is not configured"
+        empty["configured"] = False
+        return empty
+    fields = ["summary", "status", "issuetype", "description", "fixVersions"]
+    payload = None
+    last_error = ""
+    body = json.dumps({"jql": query, "maxResults": limit, "fields": fields}).encode("utf-8")
+    for path in ("/rest/api/3/search/jql", "/rest/api/3/search"):
+        request = urllib.request.Request(
+            f"{creds['base']}{path}",
+            data=body,
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
+            method="POST",
+        )
+        atlassian.authorize(request, creds)
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                payload = json.loads(response.read().decode("utf-8", errors="replace"))
+            break
+        except urllib.error.HTTPError as error:
+            last_error = f"Jira HTTP {error.code} for search"
+            if error.code not in {400, 404, 410}:
+                empty["error"] = last_error
+                return empty
+        except urllib.error.URLError as error:
+            empty["error"] = f"Jira request failed: {error.reason}"
+            return empty
+    if payload is None:
+        empty["error"] = last_error or "Jira search failed"
+        return empty
+    issues = payload.get("issues") or payload.get("results") or []
+    packed = []
+    for item in issues[:limit]:
+        fields_node = item.get("fields") or {}
+        description = fields_node.get("description")
+        if isinstance(description, dict):
+            description = _adf_text(description)
+        packed.append(
             {
-                "filename": str(item.get("filename") or ""),
-                "mime": str(item.get("mimeType") or ""),
-                "content": str(item.get("content") or ""),
+                "key": item.get("key") or "",
+                "goal": fields_node.get("summary") or "",
+                "status": (fields_node.get("status") or {}).get("name") or "",
+                "issuetype": (fields_node.get("issuetype") or {}).get("name") or "",
+                "fix_versions": [
+                    str(ver.get("name") or "")
+                    for ver in (fields_node.get("fixVersions") or [])
+                    if ver.get("name")
+                ],
+                "excerpt": str(description or "").strip()[:400],
             }
-            for item in raw_attachments
-            if item.get("filename") and item.get("content")
-        ][:20],
+        )
+    return {
+        "configured": True,
+        "jql": query,
+        "total": int(payload.get("total") or len(issues)),
+        "results": packed,
     }
 
 
