@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -28,7 +29,8 @@ def _adf_text(node: object) -> str:
     return text
 
 _MAX_TEXT = 12000
-_MAX_COMMENTS = 12
+# Tous gardés en local : le dossier en affiche peu, le fichier ticket sur disque les porte tous.
+_MAX_COMMENTS = 200
 
 
 def _comments(node: object) -> list[dict]:
@@ -42,8 +44,76 @@ def _comments(node: object) -> list[dict]:
         packed.append({
             "author": ((item.get("author") or {}).get("displayName") or ""),
             "created": str(item.get("created") or "")[:10],
-            "body": body[:2000],
+            "body": body[:6000],
         })
+    return packed
+
+
+def _links(nodes: object) -> list[dict]:
+    packed = []
+    for node in nodes or []:
+        if not isinstance(node, dict):
+            continue
+        kind = node.get("type") or {}
+        for side, label in (("outwardIssue", kind.get("outward")), ("inwardIssue", kind.get("inward"))):
+            other = node.get(side)
+            if not isinstance(other, dict) or not other.get("key"):
+                continue
+            other_fields = other.get("fields") or {}
+            packed.append(
+                {
+                    "key": str(other.get("key")),
+                    "relation": str(label or kind.get("name") or ""),
+                    "goal": str(other_fields.get("summary") or "")[:120],
+                    "status": str((other_fields.get("status") or {}).get("name") or ""),
+                }
+            )
+    return packed[:12]
+
+
+_DATE_LIKE = re.compile(r"^(?:[A-Z][a-z]{2} [A-Z][a-z]{2} \d|\d{4}-\d{2}-\d{2})")
+
+
+def _empty_field_names(fields: dict, names: dict) -> list[str]:
+    return sorted(
+        str(names[field_id])
+        for field_id, value in fields.items()
+        if field_id.startswith("customfield_") and value in (None, "", []) and names.get(field_id)
+    )
+
+
+def _option_fields(fields: dict, names: dict) -> list[dict]:
+    """Champs à liste de choix : valeur courte, utile seulement si la mission nomme le champ."""
+    packed = []
+    for field_id in sorted(fields):
+        value = fields.get(field_id)
+        if not field_id.startswith("customfield_") or not names.get(field_id):
+            continue
+        if isinstance(value, dict) and value.get("value"):
+            packed.append({"name": str(names[field_id]), "text": str(value.get("value"))})
+        elif isinstance(value, list) and value and all(isinstance(v, dict) and v.get("value") for v in value):
+            packed.append({"name": str(names[field_id]), "text": ", ".join(str(v["value"]) for v in value)})
+    return packed
+
+
+def _custom_fields(fields: dict, names: dict, *, limit: int = 8) -> list[dict]:
+    """Champs personnalisés rédigés (texte ou ADF). Les ids techniques et valeurs courtes sont du bruit."""
+    packed = []
+    for field_id in sorted(fields):
+        if not field_id.startswith("customfield_"):
+            continue
+        value = fields.get(field_id)
+        if isinstance(value, dict) and value.get("type") == "doc":
+            text = _adf_text(value).strip()
+        elif isinstance(value, str):
+            text = value.strip()
+        else:
+            continue
+        if len(text) < 20 or " " not in text or text[0] in "{[" or _DATE_LIKE.match(text):
+            continue
+        packed.append({"name": str(names.get(field_id) or field_id), "text": text[:3000]})
+        if len(packed) >= limit:
+            break
     return packed
 
 
@@ -61,8 +131,8 @@ def fetch(key: str, repo_root: Path | None = None, *, attachments: bool = True) 
             ),
             "key": key,
         }
-    wanted = "summary,description,status,issuetype,components,attachment,comment,fixVersions"
-    url = f"{creds['base']}/rest/api/3/issue/{key}?fields={wanted}"
+    # *all + names : les champs personnalisés (analyses, attendu…) portent le diagnostic métier.
+    url = f"{creds['base']}/rest/api/3/issue/{key}?fields=*all&expand=names"
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     atlassian.authorize(request, creds)
     try:
@@ -76,6 +146,7 @@ def fetch(key: str, repo_root: Path | None = None, *, attachments: bool = True) 
     description = fields.get("description")
     if isinstance(description, dict):
         description = _adf_text(description)
+    all_comments = ((fields.get("comment") or {}).get("comments")) or []
     raw_attachments = fields.get("attachment") or []
     names = [str(item.get("filename") or "") for item in raw_attachments if item.get("filename")]
     return {
@@ -84,6 +155,12 @@ def fetch(key: str, repo_root: Path | None = None, *, attachments: bool = True) 
         "goal": fields.get("summary") or "",
         "acceptance_criteria_verbatim": str(description or "").strip()[:_MAX_TEXT],
         "comments": _comments(fields.get("comment")),
+        "comment_total": len(all_comments),
+        "priority": (fields.get("priority") or {}).get("name") or "",
+        "links": _links(fields.get("issuelinks")),
+        "custom_fields": _custom_fields(fields, issue.get("names") or {}),
+        "option_fields": _option_fields(fields, issue.get("names") or {}),
+        "empty_fields": _empty_field_names(fields, issue.get("names") or {}),
         "status": (fields.get("status") or {}).get("name"),
         "issuetype": (fields.get("issuetype") or {}).get("name"),
         "components": [item.get("name") for item in (fields.get("components") or []) if item.get("name")],

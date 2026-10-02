@@ -93,23 +93,28 @@ class Dossier:
             _Section("mission", "## Mission", [_mission_line(self.mission)], 400, 80, 2),
         ]
         if primary:
-            primary_item = primary[0]
-            ticket_text, ticket_truncated = _ticket_block(primary_item, typed=self.typed_ids)
-            if ticket_truncated:
+            primary_item = dict(primary[0], mission=self.mission)
+            ticket_text, ticket_cuts = _ticket_block(primary_item, typed=self.typed_ids)
+            if ticket_cuts:
                 key = primary_item.get("key") or ""
                 self.allow_reread(
                     f"jira://{key}" if key else "ticket",
-                    "description tronquée à ~600 caractères / 8 lignes pour l'affichage ; "
-                    "recharger le ticket pour le corps complet",
+                    "tronquée à l'affichage : "
+                    + ", ".join(ticket_cuts)
+                    + (
+                        f" ; texte intégral sur disque : {primary_item.get('full_path')}"
+                        if primary_item.get("full_path")
+                        else " ; recharger seulement ces parties"
+                    ),
                 )
-            sections.append(_Section("ticket", "## Ticket", [ticket_text], 900, 180, 1))
+            sections.append(_Section("ticket", "## Ticket", [ticket_text], 5000, 180, 1))
         if self.images:
             sections.append(
                 _Section(
                     "images",
                     "## Captures",
                     [_image_block(item) for item in self.images],
-                    700,
+                    3600,
                     120,
                     2,
                 )
@@ -314,22 +319,86 @@ def _mission_line(text: str) -> str:
     return raw[:220]
 
 
-def _ticket_block(item: dict, typed: list[dict] | None = None) -> tuple[str, bool]:
+TICKET_BODY_CHARS = 3500
+TICKET_BODY_LINES = 60
+TICKET_FIELD_CHARS = 1200
+TICKET_OTHER_FIELDS = 4
+TICKET_OTHER_FIELD_CHARS = 400
+TICKET_COMMENTS = 6
+TICKET_COMMENT_CHARS = 700
+
+
+def _ticket_block(item: dict, typed: list[dict] | None = None) -> tuple[str, list[str]]:
+    """Rend le ticket et la liste de ce qui a été coupé (vide = rien à relire)."""
     key = item.get("key") or "?"
     goal = item.get("goal") or ""
     status = item.get("status") or ""
     itype = item.get("issuetype") or ""
     versions = ", ".join(item.get("fix_versions") or [])
-    body, focus_truncated = extract.ticket_focus(item.get("acceptance_criteria_verbatim") or "", limit=600)
+    cuts: list[str] = []
+    body, focus_truncated = extract.ticket_focus(
+        item.get("acceptance_criteria_verbatim") or "", limit=TICKET_BODY_CHARS
+    )
     full_lines = [line for line in body.splitlines() if line.strip()]
-    body_lines = full_lines[:8]
-    truncated = bool(focus_truncated) or len(full_lines) > len(body_lines)
-    lines = [
-        f"### {key} — {goal}",
-        f"Type : {itype} · Statut : {status}" + (f" · MEP : {versions}" if versions else ""),
-        "",
-        *body_lines,
-    ]
+    body_lines = full_lines[:TICKET_BODY_LINES]
+    if focus_truncated or len(full_lines) > len(body_lines):
+        cuts.append("description")
+    head = f"Type : {itype} · Statut : {status}"
+    if item.get("priority"):
+        head += f" · Priorité : {item.get('priority')}"
+    if versions:
+        head += f" · MEP : {versions}"
+    lines = [f"### {key} — {goal}", head, "", *body_lines]
+    mission = str(item.get("mission") or "").lower()
+    fields = list(item.get("custom_fields") or [])
+    asked = [field for field in fields if str(field.get("name") or "").lower() in mission]
+    others = [field for field in fields if field not in asked][:TICKET_OTHER_FIELDS]
+    for field in asked + others:
+        text = str(field.get("text") or "").strip()
+        if not text:
+            continue
+        limit = TICKET_FIELD_CHARS if field in asked else TICKET_OTHER_FIELD_CHARS
+        if len(text) > limit:
+            cuts.append(f"champ {field.get('name')}")
+        lines.extend(["", f"**{field.get('name')}** : {_clip(text, limit)}"])
+    for name in item.get("asked_empty_fields") or []:
+        lines.extend(["", f"**{name}** : vide dans Jira."])
+    links = item.get("links") or []
+    if links:
+        lines.append("")
+        lines.append(
+            "Liens : "
+            + " ; ".join(
+                f"{link.get('key')} ({link.get('relation')}, {link.get('status')}) {link.get('goal')}".strip()
+                for link in links
+            )
+        )
+    attachments = [str(name) for name in (item.get("attachments") or []) if name]
+    if attachments:
+        unread = [name for name in attachments if not extract.is_image_path(name)]
+        line = f"Pièces jointes ({len(attachments)}) : " + ", ".join(attachments[:12])
+        if unread:
+            line += " — non lues par scout : " + ", ".join(unread[:6])
+        if item.get("pieces_dir"):
+            line += f" — images déjà enregistrées sous `{item.get('pieces_dir')}`"
+        lines.extend(["", line])
+    if item.get("show_comments"):
+        comments = list(item.get("comments") or [])
+        total = int(item.get("comment_total") or len(comments))
+        shown = comments[-int(item.get("comment_limit") or TICKET_COMMENTS):]
+        if shown:
+            lines.extend(["", f"Commentaires ({len(shown)} derniers sur {total}) :"])
+            for comment in shown:
+                text = " ".join(str(comment.get("body") or "").split())
+                if len(text) > TICKET_COMMENT_CHARS:
+                    cuts.append("commentaires")
+                lines.append(
+                    f"- {comment.get('created')} {comment.get('author')} : {_clip(text, TICKET_COMMENT_CHARS)}"
+                )
+            if total > len(shown):
+                cuts.append("commentaires")
+        elif total == 0:
+            lines.extend(["", "Commentaires : aucun."])
     if typed:
         lines.append("")
         lines.append("UUID typés :")
@@ -339,7 +408,7 @@ def _ticket_block(item: dict, typed: list[dict] | None = None) -> tuple[str, boo
                 f"- `{row.get('value')}` | {row.get('role') or 'segment inconnu'} | "
                 f"{row.get('entity') or '?'}{extra}"
             )
-    return "\n".join(lines).rstrip(), truncated
+    return "\n".join(lines).rstrip(), list(dict.fromkeys(cuts))
 
 
 def _linked_ticket_block(item: dict) -> str:
@@ -390,9 +459,12 @@ def _page_block(item: dict) -> str:
 def _image_block(item: dict) -> str:
     name = item.get("name") or item.get("path") or "image"
     table = (item.get("table") or "").strip()
+    cut = False
     if not table:
-        table = _compact_ocr_text(item.get("transcript") or "")
+        table, cut = _ocr_text(item.get("transcript") or "")
     lines = [f"### {name}", table or "OCR inutilisable"]
+    if cut and item.get("ocr_path"):
+        lines.append(f"OCR coupé ici ; transcript complet (texte, pas l'image) : `{item.get('ocr_path')}`")
     if item.get("noisy", True) or table == "OCR inutilisable":
         lines.append("OCR bruit, ne pas citer les tokens incertains.")
     notes = list(item.get("vision_notes") or [])
@@ -407,23 +479,27 @@ def _image_block(item: dict) -> str:
     return "\n".join(lines)
 
 
-def _compact_ocr_text(transcript: str) -> str:
-    lines = [line.strip() for line in (transcript or "").splitlines() if line.strip()]
-    keep: list[str] = []
-    for line in lines:
-        if re.search(r"0\s*(h|km)|0h|0km|durée|duree|planif|compteur|jauge", line, re.I):
-            keep.append(line[:80])
-        elif len(line) <= 42 and re.search(r"[A-Za-zÀ-ÿ]{3,}", line):
-            keep.append(line[:80])
-        if len(keep) >= 8:
-            break
-    if not keep and lines:
-        first = lines[0][:80]
-        if re.search(r"[A-Za-z0-9]{4,}", first):
-            keep.append(first)
-    if len(lines) > 25 and len(keep) < 3:
-        return "OCR inutilisable"
-    return "\n".join(keep) if keep else "OCR inutilisable"
+OCR_IMAGE_CHARS = 1000
+OCR_IMAGE_LINES = 30
+
+
+def _ocr_text(transcript: str, *, limit: int = OCR_IMAGE_CHARS) -> tuple[str, bool]:
+    """Transcript dans l'ordre de lecture, cellules vides retirées. Aucun tri par mots-clés."""
+    kept: list[str] = []
+    for raw in (transcript or "").splitlines():
+        line = raw.strip()
+        if line.startswith("|"):
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            cells = [cell for cell in cells if cell and not set(cell) <= set("-: ")]
+            line = " | ".join(cells)
+        if not line or (kept and kept[-1] == line):
+            continue
+        kept.append(line)
+    text = "\n".join(kept[:OCR_IMAGE_LINES])
+    cut = len(kept) > OCR_IMAGE_LINES or len(text) > limit
+    if len(text) > limit:
+        text = text[:limit].rsplit("\n", 1)[0] if "\n" in text[:limit] else text[:limit]
+    return (text or "OCR inutilisable"), cut
 
 
 def _code_block(item: dict) -> str:

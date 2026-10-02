@@ -69,6 +69,7 @@ def gather(
         elif lowered.startswith("git://"):
             git_patterns.append(uri.split("://", 1)[-1])
 
+    extraction = extract.is_extraction(mission)
     primary_key = keys[0] if keys else ""
     if not primary_key and not closed:
         mission_keys = extract.ticket_keys(mission)
@@ -114,6 +115,17 @@ def gather(
                 dossier.errors.append(f"{key}: {err}")
             continue
         packed["role"] = "linked" if linked else "primary"
+        packed["asked_empty_fields"] = [
+            name for name in (packed.get("empty_fields") or []) if name.lower() in mission.lower()
+        ]
+        asked = [
+            field for field in (packed.get("option_fields") or []) if field["name"].lower() in mission.lower()
+        ]
+        packed["custom_fields"] = asked + list(packed.get("custom_fields") or [])
+        if not linked:
+            packed["full_path"] = _write_ticket(config, packed, out_dir / "tickets")
+            packed["comment_limit"] = 12 if extract.wants_comments(mission) else 6
+        packed["show_comments"] = not linked and (extraction or extract.wants_comments(mission))
         dossier.tickets.append(packed)
         dossier.read_sources.append(f"jira://{key}")
         dossier.ledger.add_text("jira", str(packed.get("acceptance_criteria_verbatim") or ""))
@@ -136,10 +148,13 @@ def gather(
                         keys.append(extra)
         if (
             not linked
-            and extract.wants_ocr(mission, text)
+            and (extraction or extract.wants_ocr(mission, text))
             and packed.get("attachment_files")
         ):
-            for path in jira_provider.save_images(packed, pieces, config.repo_root):
+            saved = jira_provider.save_images(packed, pieces, config.repo_root)
+            if saved:
+                packed["pieces_dir"] = _relative(config, pieces)
+            for path in saved:
                 if path not in ocr_paths:
                     ocr_paths.append(path)
     _mark(dossier, "jira", started)
@@ -152,7 +167,7 @@ def gather(
         if resolved in seen_ocr:
             continue
         seen_ocr.add(resolved)
-        _ocr_one(config, dossier, path)
+        _ocr_one(config, dossier, path, out_dir / "ocr")
         dossier.read_sources.append(_relative(config, path))
     _mark(dossier, "ocr", started)
 
@@ -182,9 +197,15 @@ def gather(
         dossier.pages.append(packed)
         dossier.read_sources.append(f"confluence://{page_id}")
         dossier.ledger.add_text("confluence", str(packed.get("body") or packed.get("text") or ""))
-    if diagnosis and not dossier.pages:
-        query = extract.confluence_query(mission, ticket_blob)
-        found = confluence_provider.search(query, config.repo_root)
+    need_page = not extraction or extract.wants_confluence(mission)
+    if diagnosis and need_page and not dossier.pages:
+        goal = str(dossier.tickets[0].get("goal") or "") if dossier.tickets else ""
+        query = extract.confluence_query(mission, ticket_blob, goal)
+        found = (
+            confluence_provider.search(query, config.repo_root)
+            if query
+            else {"results": [], "error": "aucun terme de domaine dans le ticket ni la mission"}
+        )
         results = list(found.get("results") or [])
         if found.get("error") and not results:
             dossier.confluence_note = f"non cherchée : {found.get('error')}"
@@ -245,8 +266,10 @@ def gather(
         for item in dossier.code:
             if item.get("file") and str(item["file"]) not in dossier.read_sources:
                 dossier.read_sources.append(str(item["file"]))
-    elif diagnosis:
-        needles = extract.merge(named_symbols, ["PlanificationBonsService", "dureePlanifiee"], limit=12)
+    elif diagnosis and (not extraction or extract.wants_screen(mission) or extract.symbols(blob)):
+        slugs = extract.url_slugs(f"{ticket_blob}\n{mission}")
+        camel = ["".join(part.capitalize() for part in re.split(r"[-_]", slug)) for slug in slugs]
+        needles = extract.merge(extract.merge(named_symbols, slugs, limit=12), camel, limit=12)
         code_x.screen_pass(config, dossier, needles, seen_files)
         dossier.code = dossier.code[:3]
         for item in dossier.code:
@@ -257,14 +280,14 @@ def gather(
             _grep_symbol(config, dossier, symbol, seen_files)
     _mark(dossier, "code", started)
 
-    _type_url_uuids(config, dossier, f"{ticket_blob}\n{mission}\n{blob}")
+    _type_url_uuids(config, dossier, f"{ticket_blob}\n{mission}")
     dossier.raw_chars = dossier.ledger.text_chars()
     if extract.is_grep_mission(mission):
         for symbol in named_symbols:
             if dossier.rg_counts.get(symbol) == 0:
                 dossier.holes.append(f"rg 0 match : {symbol}")
                 dossier.absence_guard = True
-    _finalize_coverage(config, dossier, mission, listed, keys, diagnosis=diagnosis)
+    _finalize_coverage(config, dossier, mission, listed, keys, diagnosis=diagnosis, extraction=extraction)
     return dossier
 
 
@@ -370,6 +393,30 @@ def _load_pdf(config: Config, dossier: Dossier, relative: str, path: Path, missi
         dossier.allow_reread(relative, "texte de page : pdftotext absent, annots OK")
 
 
+def _write_ticket(config: Config, packed: dict, directory: Path) -> str:
+    """Ticket intégral en texte sur disque : le drill-down lit ce fichier, pas un second appel Jira."""
+    lines = [
+        f"# {packed.get('key')} — {packed.get('goal')}",
+        f"Type : {packed.get('issuetype')} · Statut : {packed.get('status')} · Priorité : {packed.get('priority') or '?'}",
+        "",
+        "## Description",
+        str(packed.get("acceptance_criteria_verbatim") or ""),
+    ]
+    for field in list(packed.get("option_fields") or []) + list(packed.get("custom_fields") or []):
+        lines.extend(["", f"## {field.get('name')}", str(field.get("text") or "")])
+    comments = packed.get("comments") or []
+    lines.extend(["", f"## Commentaires ({len(comments)})"])
+    for comment in comments:
+        lines.extend(["", f"### {comment.get('created')} {comment.get('author')}", str(comment.get("body") or "")])
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        target = directory / f"{packed.get('key')}.md"
+        target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except OSError:
+        return ""
+    return _relative(config, target)
+
+
 def _load_log(config: Config, dossier: Dossier, raw: str) -> None:
     path = _resolve(config, raw)
     relative = _relative(config, path)
@@ -444,6 +491,7 @@ def _finalize_coverage(
     keys: list[str],
     *,
     diagnosis: bool,
+    extraction: bool = False,
 ) -> None:
     for relative in listed:
         path = _resolve(config, relative)
@@ -491,9 +539,14 @@ def _finalize_coverage(
 
     typed_ok = True
     if diagnosis:
-        if not dossier.pages:
+        # Une mission « Extraire… » ne demande ni écran ni page de domaine : ne pas les exiger.
+        need_page = not extraction or extract.wants_confluence(mission)
+        need_screen = not extraction or extract.wants_screen(mission)
+        page_ok = bool(dossier.pages) or not need_page
+        screen_ok = _has_screen(dossier) or not need_screen
+        if not page_ok:
             _hole(dossier, dossier.confluence_note or "page Confluence du domaine absente")
-        if not _has_screen(dossier):
+        if not screen_ok:
             _hole(
                 dossier,
                 "écran du ticket absent (contrôleur qui render, pas un use() incidental)",
@@ -504,18 +557,14 @@ def _finalize_coverage(
         elif extract.url_uuid_hits("\n".join(dossier.ids) + "\n" + dossier.mission):
             typed_ok = False
             _hole(dossier, "UUID extraits des URL non typés (paramètre de route)")
+        if extraction:
+            typed_ok = True
         search_ok = (not extract.wants_jira_search(mission)) or (
             dossier.jira_search is not None and not dossier.jira_search.get("error")
         )
-        complete = (
-            bool(dossier.tickets)
-            and bool(dossier.pages)
-            and _has_screen(dossier)
-            and typed_ok
-            and search_ok
-        )
+        complete = bool(dossier.tickets) and page_ok and screen_ok and typed_ok and search_ok
         dossier.holes_none_ok = complete and not dossier.holes and not dossier.missed
-        blocking = (not search_ok) or (not typed_ok) or (not dossier.pages) or (not _has_screen(dossier))
+        blocking = (not search_ok) or (not typed_ok) or (not page_ok) or (not screen_ok)
         if blocking and not dossier.holes:
             _hole(dossier, "dossier incomplet pour le diagnostic")
         dossier.ready = complete and not dossier.missed and not dossier.errors
@@ -618,7 +667,7 @@ def _ticket_text(packed: dict) -> str:
     )
 
 
-def _ocr_one(config: Config, dossier: Dossier, path: Path) -> None:
+def _ocr_one(config: Config, dossier: Dossier, path: Path, ocr_dir: Path | None = None) -> None:
     from .. import evidence
 
     try:
@@ -633,13 +682,16 @@ def _ocr_one(config: Config, dossier: Dossier, path: Path) -> None:
     if not transcript.strip():
         dossier.holes.append(f"OCR vide : {path.name}")
         dossier.missed.append(f"OCR vide : {path.name}")
-    dossier.images.append(
-        {
-            "name": path.name,
-            "path": str(path),
-            "transcript": transcript[:4000],
-        }
-    )
+    item = {"name": path.name, "path": str(path), "transcript": transcript[:4000]}
+    if ocr_dir is not None and transcript.strip():
+        try:
+            ocr_dir.mkdir(parents=True, exist_ok=True)
+            target = ocr_dir / f"{path.stem}.txt"
+            target.write_text(transcript, encoding="utf-8")
+            item["ocr_path"] = _relative(config, target)
+        except OSError:
+            pass
+    dossier.images.append(item)
     if path.is_file():
         dossier.ledger.add_image_file(path)
     dossier.ledger.add_text("ocr", transcript)

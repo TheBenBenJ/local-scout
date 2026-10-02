@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import os
+import subprocess
 from pathlib import Path
 import urllib.request
 
@@ -41,13 +42,36 @@ def _parse_env_file(path: Path) -> dict[str, str]:
     return found
 
 
-def _file_values(repo_root: Path | None) -> dict[str, str]:
+def env_roots(repo_root: Path | None) -> list[Path]:
+    """Le dépôt cible, puis son checkout principal : un worktree git n'a pas le .env.local ignoré."""
     if repo_root is None:
-        return {}
+        return []
     root = Path(repo_root)
+    roots = [root]
+    try:
+        process = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+            stdin=subprocess.DEVNULL,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return roots
+    common = Path((process.stdout or "").strip()) if process.returncode == 0 else None
+    if common and common.name == ".git" and common.parent != root.resolve():
+        roots.append(common.parent)
+    return roots
+
+
+def _file_values(repo_root: Path | None) -> dict[str, str]:
     merged: dict[str, str] = {}
-    for relative in _FILES:
-        merged.update(_parse_env_file(root / relative))
+    # Le checkout principal d'abord, pour que le worktree puisse le surcharger.
+    for root in reversed(env_roots(repo_root)):
+        for relative in _FILES:
+            merged.update(_parse_env_file(root / relative))
     return merged
 
 

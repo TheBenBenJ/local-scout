@@ -8,6 +8,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from .atlassian import env_roots
+
 _FILES = (".claude/.env.local", ".env.local")
 _KEYS = {
     "GITLAB_URL",
@@ -36,12 +38,10 @@ def _parse_env_file(path: Path) -> dict[str, str]:
 
 
 def _file_values(repo_root: Path | None) -> dict[str, str]:
-    if repo_root is None:
-        return {}
-    root = Path(repo_root)
     merged: dict[str, str] = {}
-    for relative in _FILES:
-        merged.update(_parse_env_file(root / relative))
+    for root in reversed(env_roots(repo_root)):
+        for relative in _FILES:
+            merged.update(_parse_env_file(root / relative))
     return merged
 
 

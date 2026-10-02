@@ -345,8 +345,6 @@ def review_rank(relative: str) -> int:
     score = 0
     if "Handler" in name:
         score += 50
-    if "TravauxController" in name or "BonsTravaux" in name:
-        score += 60
     if name.endswith("Controller.php"):
         score += 25
     if relative.endswith(".twig"):
@@ -381,15 +379,8 @@ def screen_pass(
     seen: set[str],
 ) -> None:
     patterns = [re.escape(item) for item in needles if item]
-    patterns.extend(
-        [
-            r"->render\(",
-            r"dureePlanifiee",
-            r"planification-bons-travaux",
-            r"PlanificationBonsTravaux",
-            r"PlanificationBonsService",
-        ]
-    )
+    if not patterns:
+        return
     patterns = list(dict.fromkeys(patterns))[:12]
     try:
         matches, total = files.grep(
@@ -420,13 +411,10 @@ def screen_pass(
     )
     kept = 0
     for relative, group in ranked:
+        if "Controller" in Path(relative).name:
+            group = group + _render_matches(config, relative)
         blob = "\n".join(str(row.get("text") or "") for row in group)
-        incidental = (
-            "Controller" in Path(relative).name
-            and "->render(" not in blob
-            and "render(" not in blob
-            and ("use " in blob or "PlanificationBonsService" in blob)
-        )
+        incidental = "Controller" in Path(relative).name and "render(" not in blob
         if incidental:
             dossier.incidental.append(f"`{relative}` : mention incidente, écarté")
             continue
@@ -435,6 +423,21 @@ def screen_pass(
         kept += 1
         if kept >= 3:
             break
+
+
+def _render_matches(config: Config, relative: str, *, limit: int = 3) -> list[dict]:
+    """Un contrôleur trouvé par un motif du ticket : ses render() disent quel écran il sert."""
+    try:
+        lines = (config.repo_root / relative).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    found = []
+    for number, text in enumerate(lines, start=1):
+        if "->render(" in text:
+            found.append({"file": relative, "line": number, "text": text})
+            if len(found) >= limit:
+                break
+    return found
 
 
 def review_pass(
