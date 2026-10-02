@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -331,6 +332,7 @@ def main() -> None:
     _test_lys_6553()
     _test_logs_extract()
     _test_ticket_truncation_flagged()
+    _test_extraction_mission()
     _test_maybe_vision()
     _test_gitarch()
     _test_gather_log_source()
@@ -1040,12 +1042,9 @@ def _test_gather_git_source() -> None:
 
 
 def _test_ticket_truncation_flagged() -> None:
-    """LYSI-6591 terrain : une description longue tronquée à l'affichage doit rester relisible."""
+    """LYSI-6591 terrain : ce qui est coupé à l'affichage doit rester relisible, et dit."""
     long_body = "\n".join(
-        [
-            "Décisions",
-            *[f"- étape {index} : transformer le champ X{index} en Y{index}" for index in range(20)],
-        ]
+        ["Décisions", *[f"- étape {index} : transformer le champ X{index} en Y{index}" for index in range(200)]]
     )
     long_dossier = Dossier(mission="Intervention en prod : flux donnée")
     long_dossier.tickets.append(
@@ -1063,7 +1062,17 @@ def _test_ticket_truncation_flagged() -> None:
         "LYSI-6591" in str(item.get("path")) for item in long_dossier.re_read_allowed
     ))
     check("ticket long : re-read_allowed dans le header", "jira://LYSI-6591" in long_md)
-    check("ticket long : raison tronquée explicite", "tronquée" in long_md)
+    check("ticket long : partie coupée nommée", "description" in long_md.split("## Mission")[0])
+
+    medium = "\n".join(f"ligne {index} du constat métier détaillé" for index in range(30))
+    medium_dossier = Dossier(mission="Extraire LYSI-2")
+    medium_dossier.tickets.append(
+        {"key": "LYSI-2", "goal": "t", "issuetype": "Anomalie", "status": "Ouvert",
+         "acceptance_criteria_verbatim": medium, "comments": []}
+    )
+    medium_md = medium_dossier.markdown()
+    check("ticket moyen : corps intégral", "ligne 29 du constat" in medium_md)
+    check("ticket moyen : rien à relire", medium_dossier.re_read_allowed == [])
 
     short_dossier = Dossier(mission="Petit ticket")
     short_dossier.tickets.append(
@@ -1078,6 +1087,111 @@ def _test_ticket_truncation_flagged() -> None:
     )
     short_dossier.markdown()
     check("ticket court : pas de re-read_allowed", short_dossier.re_read_allowed == [])
+
+
+def _test_extraction_mission() -> None:
+    """Sessions /analyse du 29/09 au 01/10 : « Extraire… » doit rendre un ticket complet et prêt."""
+    import subprocess
+
+    from local_agent.config import Config
+    from local_agent.providers import atlassian
+    from local_agent.scout import gather as gather_mod
+    from local_agent.scout.dossier import _ocr_text
+    from local_agent.scout.engine import run_scout
+
+    repo = Path(tempfile.mkdtemp())
+    _write(repo, "src/Controller/PlanificationBonsTravauxController.php", "<?php\nclass X { function a(){ return $this->render('a'); } }\n")
+
+    def fake_fetch(key, repo_root=None, **kwargs):
+        return {
+            "configured": True,
+            "key": key,
+            "goal": "RH PAIE / MORLAIX / Contrat introuvable",
+            "issuetype": "Intervention en prod",
+            "status": "Nouveau",
+            "priority": "Haute",
+            "acceptance_criteria_verbatim": "\n".join(f"constat ligne {index}" for index in range(25)),
+            "comments": [{"author": "Diana", "created": "2026-09-29", "body": "COMMENT-PROOF avenant du 24/09"}],
+            "comment_total": 1,
+            "links": [{"key": "LYSI-6400", "relation": "relates to", "goal": "avenants", "status": "En cours"}],
+            "custom_fields": [{"name": "Analyse 6TM", "text": "FIELD-PROOF donnée incohérente en base"}],
+            "attachments": ["image-1.png", "export.xlsx"],
+            "attachment_files": [],
+        }
+
+    def boom_search(*args, **kwargs):
+        raise AssertionError("Confluence non demandée par une mission d'extraction")
+
+    original_fetch = gather_mod.jira_provider.fetch
+    original_cql = gather_mod.confluence_provider.search
+    gather_mod.jira_provider.fetch = fake_fetch
+    gather_mod.confluence_provider.search = boom_search
+    try:
+        result = run_scout(
+            Config(repo_root=repo),
+            "Extraire issuetype exact, titre, statut, constat, attendu, commentaires utiles, liens et pièces, "
+            "champs Analyse 6TM et Analyse ABER. LYSI-6591",
+            ticket="LYSI-6591",
+            no_llm=True,
+        )
+    finally:
+        gather_mod.jira_provider.fetch = original_fetch
+        gather_mod.confluence_provider.search = original_cql
+    md = result.markdown
+    check("extraction : prêt", result.ready is True)
+    check("extraction : corps intégral", "constat ligne 24" in md)
+    check("extraction : priorité", "Priorité : Haute" in md)
+    check("extraction : champ personnalisé", "FIELD-PROOF" in md and "Analyse 6TM" in md)
+    check("extraction : commentaire", "COMMENT-PROOF" in md)
+    check("extraction : lien", "LYSI-6400" in md)
+    check("extraction : pièce non lue signalée", "non lues par scout : export.xlsx" in md)
+    check("extraction : pas de code hors sujet", "## Code" not in md)
+    check("extraction : pas de Confluence imposée", "## Confluence" not in md)
+    check("extraction : pas de trou fantôme", "non cherchée" not in md)
+
+    check("chemin absolu conservé", extract.as_repo_path("/abs/dir/image-1.png") == "/abs/dir/image-1.png")
+    check("chercher dans Confluence n'est pas un JQL", extract.wants_jira_search("Chercher dans Confluence la doc") is False)
+    check(
+        "requête Confluence = domaine du titre",
+        extract.confluence_query("Extraire issuetype exact", "", "RH PAIE / MORLAIX / Contrat introuvable")
+        == "Contrat introuvable",
+    )
+    text, cut = _ocr_text("|  | Taux | 12.57 |  |\n|  |  |  |\n| Rémunération | 1885.26 |\n")
+    check("OCR : chiffres gardés sans mot-clé", "12.57" in text and "1885.26" in text and cut is False)
+    check("OCR : cellules vides retirées", "|  |" not in text)
+
+    from local_agent.providers import jira as jira_mod
+
+    names = {
+        "customfield_1": "Analyse 6TM", "customfield_2": "Analyse ABER", "customfield_3": "development",
+        "customfield_4": "Date dernier commentaire", "customfield_5": "Attendu",
+    }
+    raw_fields = {
+        "customfield_1": None,
+        "customfield_2": {"value": "Anomalie de TMA"},
+        "customfield_3": "{repository={count=1, dataType=repository}}",
+        "customfield_4": "Tue Sep 29 15:13:02 UTC 2026",
+        "customfield_5": "Le contrat doit rester visible après modification",
+    }
+    texts = [field["name"] for field in jira_mod._custom_fields(raw_fields, names)]
+    check("jira : champ rédigé gardé, bruit technique écarté", texts == ["Attendu"])
+    check("jira : champ à choix lu", jira_mod._option_fields(raw_fields, names) == [{"name": "Analyse ABER", "text": "Anomalie de TMA"}])
+    check("jira : champ vide nommé", jira_mod._empty_field_names(raw_fields, names) == ["Analyse 6TM"])
+
+    main_repo = Path(tempfile.mkdtemp()).resolve()
+    subprocess.run(["git", "init", "-q", "-b", "main", str(main_repo)], check=True)
+    _git(main_repo, "commit", "-q", "--allow-empty", "-m", "init")
+    _write(main_repo, ".claude/.env.local", "JIRA_URL=https://example.atlassian.net\nJIRA_API_TOKEN=tok\n")
+    worktree = main_repo.parent / (main_repo.name + "-wt")
+    _git(main_repo, "worktree", "add", "-q", str(worktree))
+    saved = {key: os.environ.pop(key, None) for key in atlassian._KEYS}
+    try:
+        creds = atlassian.credentials(worktree)
+    finally:
+        for key, value in saved.items():
+            if value is not None:
+                os.environ[key] = value
+    check("worktree : credentials du checkout principal", creds["base"] == "https://example.atlassian.net")
 
 
 def _test_maybe_vision() -> None:

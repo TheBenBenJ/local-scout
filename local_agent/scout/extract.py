@@ -50,9 +50,17 @@ _HANDWRITE_NEED = re.compile(
 )
 _GREP_NEED = re.compile(r"\b(grep|ripgrep|\brg\b|où est|where is)\b", re.IGNORECASE)
 _JIRA_SEARCH = re.compile(
-    r"\b(chercher|search|doublon|ticket existant|tickets existants|jql)\b",
+    r"\b(doublons?|tickets? existants?|jql)\b|"
+    r"\b(?:chercher|rechercher|search)\b[^.\n]{0,60}\b(?:tickets?|jira|doublons?)\b",
     re.IGNORECASE,
 )
+_EXTRACTION = re.compile(
+    r"^\W*(?:LYSI-\d+\s*:?\s*)?(?:extraire|recenser|lister|relever|lire|récupérer|recuperer|contexte de)\b",
+    re.IGNORECASE,
+)
+_SCREEN_NEED = re.compile(r"\b(écran|ecran|contrôleur|controleur|controller|render|template|twig)\b", re.IGNORECASE)
+_CONFLUENCE_NEED = re.compile(r"\b(confluence|documentation|page du domaine|règle métier|regle metier)\b", re.IGNORECASE)
+_COMMENT_NEED = re.compile(r"\b(commentaires?|échanges?|echanges?|arbitrages?|décisions?|decisions?|réponses?)\b", re.IGNORECASE)
 _URL_UUID = re.compile(
     r"/([A-Za-z0-9_-]{3,})/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})",
     re.IGNORECASE,
@@ -63,6 +71,12 @@ _JQL_STOP = {
     "défaut", "defaut", "doublon", "jql", "lysi", "sans", "avec", "pour", "dans",
     "les", "des", "une", "sur", "plus", "résultats", "resultats", "conclure",
     "absence", "mission", "sources", "commentaires", "jaunes",
+    "extraire", "recenser", "lister", "relever", "lire", "récupérer", "recuperer",
+    "issuetype", "exact", "exacte", "titre", "statut", "priorité", "priorite",
+    "constat", "attendu", "utiles", "liens", "pièces", "pieces", "jointes", "champs",
+    "analyse", "contexte", "diagnostiquer", "diagnostic", "rassembler", "captures",
+    "capture", "description", "texte", "libre", "clés", "cles", "citées", "citees",
+    "personnalisés", "personnalises", "devra", "décider", "decider", "cause",
 }
 _TICKET_HEAD = re.compile(
     r"(?im)^(?:#{1,6}\s*|[*+-]\s*)?"
@@ -129,7 +143,7 @@ def image_names(text: str, *, limit: int = 8) -> list[str]:
 
 def prefer_full_paths(items: list[str]) -> list[str]:
     """Garde lib/bundle/src/Foo.php et écarte le suffixe src/Foo.php."""
-    found = [item.strip().lstrip("/") for item in items if str(item or "").strip()]
+    found = [item.strip() for item in items if str(item or "").strip()]
     kept: list[str] = []
     for item in found:
         if any(other != item and other.endswith("/" + item) for other in found):
@@ -149,7 +163,9 @@ def as_repo_path(uri: str) -> str | None:
         return None
     if lowered.startswith("repo://"):
         raw = raw.split("://", 1)[-1]
-    raw = raw.strip().lstrip("./").replace("\\", "/")
+    raw = raw.strip().replace("\\", "/")
+    while raw.startswith("./"):
+        raw = raw[2:]
     if Path(raw).suffix.lower() in _SOURCE_SUFFIX or "/" in raw:
         return raw
     return None
@@ -204,6 +220,27 @@ def wants_jira_search(text: str) -> bool:
     return bool(_JIRA_SEARCH.search(text or ""))
 
 
+def is_extraction(text: str) -> bool:
+    """Mission de ramassage pur (« Extraire… », « Recenser… ») : pas d'écran ni de page exigés."""
+    return bool(_EXTRACTION.search(text or ""))
+
+
+def wants_screen(text: str) -> bool:
+    return bool(_SCREEN_NEED.search(text or ""))
+
+
+def wants_confluence(text: str) -> bool:
+    return bool(_CONFLUENCE_NEED.search(text or ""))
+
+
+def wants_comments(text: str) -> bool:
+    return bool(_COMMENT_NEED.search(text or ""))
+
+
+def url_slugs(text: str, *, limit: int = 4) -> list[str]:
+    return _uniq([slug for slug, _value in url_uuid_hits(text)], limit=limit)
+
+
 def is_ticket_diagnosis(mission: str, keys: list[str], listed: list[str]) -> bool:
     if wants_annots(mission) or is_review(mission):
         return False
@@ -227,7 +264,7 @@ def jql_terms(text: str, *, limit: int = 6) -> list[str]:
 def build_jql(mission: str, *, exclude: list[str] | None = None) -> str:
     terms = jql_terms(mission)
     if not terms:
-        terms = ["planification"]
+        return ""
     clauses = " OR ".join(f'text ~ "{term}"' for term in terms[:6])
     jql = f"project = LYSI AND ({clauses})"
     keys = [key for key in (exclude or []) if key]
@@ -236,10 +273,15 @@ def build_jql(mission: str, *, exclude: list[str] | None = None) -> str:
     return jql + " ORDER BY updated DESC"
 
 
-def confluence_query(mission: str, ticket_text: str = "") -> str:
-    blob = f"{mission}\n{ticket_text}"
-    terms = jql_terms(blob, limit=4)
-    return " ".join(terms[:4]) or "planification bons"
+def confluence_query(mission: str, ticket_text: str = "", goal: str = "") -> str:
+    """Le titre du ticket décrit le domaine ; la mission décrit la consigne."""
+    words = jql_terms(goal, limit=12)
+    # Agence, nom de personne : en capitales dans les titres, sans valeur pour une recherche de domaine.
+    plain = [word for word in words if not word.isupper()]
+    terms = (plain if len(plain) >= 2 else words)[:4]
+    if len(terms) < 2:
+        terms = merge(terms, jql_terms(f"{mission}\n{ticket_text}", limit=4), limit=4)
+    return " ".join(terms[:4])
 
 
 def url_uuid_hits(text: str) -> list[tuple[str, str]]:

@@ -61,6 +61,27 @@ Le chemin n'est pas renvoyé dans la réponse MCP.
 Protocole de session A/B/C : [`session-bench.md`](session-bench.md).
 Prompts terrain 6160 / 6417 / 6553 + grille : [`session-prompts.md`](session-prompts.md).
 
+## Ce que l'analyse des sessions a changé (2 oct 2026)
+
+Dix appels `scout` relevés dans les transcripts Claude Code du 14/09 au 01/10 : dans les dix,
+l'orchestrateur a rechargé le ticket ou rouvert les PNG juste après. Causes corrigées :
+
+- corps du ticket coupé à 600 caractères / 8 lignes alors que le dossier n'utilisait qu'un
+  tiers de son plafond : le corps passe maintenant en entier tant que le budget le permet ;
+- ni commentaires, ni liens, ni priorité, ni champs personnalisés : ils sont rendus, les champs
+  nommés dans la mission d'abord (« vide dans Jira » s'ils le sont) ;
+- section Code hors sujet (motifs d'un ticket de planification codés en dur) : la recherche
+  d'écran part des URL et symboles du ticket, et ne tourne pas pour une mission « Extraire… » ;
+- `ready: false` systématique faute de page Confluence, cherchée avec les verbes de la consigne :
+  une mission d'extraction n'exige ni page ni écran, et la requête part du titre du ticket ;
+- OCR réduit à quelques lignes filtrées par mots-clés : transcript dans l'ordre de lecture,
+  borné par image, intégral dans `temp/scout/<clé>/ocr/<image>.txt` ;
+- image passée en chemin absolu marquée « non extraite » ; Jira « non configuré » depuis un
+  worktree git (le `.env.local` du checkout principal est maintenant lu).
+
+Ce qui est coupé est nommé dans `re-read_allowed` avec un fichier texte sur disque
+(`temp/scout/<clé>/tickets/<clé>.md`) : le drill-down lit ce fichier.
+
 ## Mesure Cursor (LYSI-6476, 9 sept 2026)
 
 Dans **une** session mesurée, diagnostiquer depuis un dossier scout **déjà écrit
