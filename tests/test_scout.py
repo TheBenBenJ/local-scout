@@ -1149,6 +1149,16 @@ def _test_extraction_mission() -> None:
     check("extraction : pas de Confluence imposée", "## Confluence" not in md)
     check("extraction : pas de trou fantôme", "non cherchée" not in md)
 
+    from local_agent.scout.dossier import _page_block
+
+    page_dossier = Dossier(mission="Citer la page")
+    page_dossier.pages.append(
+        {"id": "2505965569", "title": "Recette", "body": "PAGE-START " + "règle " * 1200 + " PAGE-END", "full_path": "temp/scout/x/pages/2505965569.md"}
+    )
+    page_md = page_dossier.markdown()
+    check("page : corps rendu au-delà de 400 caractères", len(_page_block(page_dossier.pages[0])[0]) > 3000)
+    check("page : coupe signalée avec fichier", "confluence://2505965569" in page_md and "pages/2505965569.md" in page_md)
+    check("écran décrit par une capture n'exige pas de code", extract.wants_screen("Lire les captures, écran Journaux Quadra") is False)
     check("chemin absolu conservé", extract.as_repo_path("/abs/dir/image-1.png") == "/abs/dir/image-1.png")
     check("chercher dans Confluence n'est pas un JQL", extract.wants_jira_search("Chercher dans Confluence la doc") is False)
     check(

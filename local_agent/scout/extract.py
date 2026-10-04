@@ -58,7 +58,11 @@ _EXTRACTION = re.compile(
     r"^\W*(?:LYSI-\d+\s*:?\s*)?(?:extraire|recenser|lister|relever|lire|récupérer|recuperer|contexte de)\b",
     re.IGNORECASE,
 )
-_SCREEN_NEED = re.compile(r"\b(écran|ecran|contrôleur|controleur|controller|render|template|twig)\b", re.IGNORECASE)
+# « écran » seul décrit souvent ce que montre une capture : seul un mot de code exige le contrôleur.
+_SCREEN_NEED = re.compile(
+    r"\b(contrôleur|controleur|controller|render|template|twig|code de l['’]écran|code de l['’]ecran)\b",
+    re.IGNORECASE,
+)
 _CONFLUENCE_NEED = re.compile(r"\b(confluence|documentation|page du domaine|règle métier|regle metier)\b", re.IGNORECASE)
 _COMMENT_NEED = re.compile(r"\b(commentaires?|échanges?|echanges?|arbitrages?|décisions?|decisions?|réponses?)\b", re.IGNORECASE)
 _URL_UUID = re.compile(
