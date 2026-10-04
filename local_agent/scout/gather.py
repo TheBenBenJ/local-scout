@@ -59,7 +59,10 @@ def gather(
                 limit=6,
             )
         elif lowered.startswith("confluence://"):
-            page_ids = extract.confluence_ids(uri + "\n" + " ".join(page_ids))
+            found = extract.confluence_ids(uri)
+            # confluence://ESPACE/Titre : le provider sait chercher par titre, ne pas l'ignorer.
+            ident = uri.split("://", 1)[-1].strip()
+            page_ids = extract.merge(page_ids, found or ([ident] if ident else []), limit=3)
         elif lowered.startswith("image://") or Path(uri).suffix.lower() in _IMAGE_SUFFIX:
             extra_images.append(_resolve(config, uri.split("://", 1)[-1] if lowered.startswith("image://") else uri))
         elif lowered.startswith("log://"):
@@ -194,6 +197,7 @@ def gather(
         if packed.get("error"):
             dossier.errors.append(f"confluence {page_id}: {packed.get('error')}")
             continue
+        packed["full_path"] = _write_page(config, packed, out_dir / "pages")
         dossier.pages.append(packed)
         dossier.read_sources.append(f"confluence://{page_id}")
         dossier.ledger.add_text("confluence", str(packed.get("body") or packed.get("text") or ""))
@@ -391,6 +395,21 @@ def _load_pdf(config: Config, dossier: Dossier, relative: str, path: Path, missi
         dossier.ledger.add_text("code", str(annot.get("contents") or annot.get("passage") or ""))
     if extract.wants_pdf_text(mission) and not packed.get("pdftotext"):
         dossier.allow_reread(relative, "texte de page : pdftotext absent, annots OK")
+
+
+def _write_page(config: Config, packed: dict, directory: Path) -> str:
+    """Page intégrale en texte sur disque : citer mot pour mot sans rappeler Confluence."""
+    body = str(packed.get("body") or packed.get("text") or "")
+    if not body.strip():
+        return ""
+    name = re.sub(r"[^A-Za-z0-9_-]+", "-", str(packed.get("id") or packed.get("page") or "page")).strip("-")
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        target = directory / f"{name or 'page'}.md"
+        target.write_text(f"# {packed.get('title') or ''}\n\n{body}\n", encoding="utf-8")
+    except OSError:
+        return ""
+    return _relative(config, target)
 
 
 def _write_ticket(config: Config, packed: dict, directory: Path) -> str:

@@ -140,7 +140,7 @@ class Dossier:
             sections.append(_Section("code", "## Code", code_items, 1600, 200, 2))
         if self.pages:
             sections.append(
-                _Section("pages", "## Confluence", [_page_block(item) for item in self.pages[:2]], 600, 100, 2)
+                _Section("pages", "## Confluence", self._page_items(), 4000, 100, 2)
             )
         elif self.confluence_note:
             sections.append(
@@ -218,6 +218,19 @@ class Dossier:
                 _Section("locations", "## Locations", [f"- {item}" for item in self.locations], 300, 60, 2)
             )
         return _pack(_header(self), sections, _tail(self), cap)
+
+    def _page_items(self) -> list[str]:
+        items = []
+        for item in self.pages[:2]:
+            text, cut = _page_block(item)
+            if cut:
+                page_id = item.get("id") or item.get("page") or ""
+                reason = "corps tronqué à l'affichage"
+                if item.get("full_path"):
+                    reason += f" ; texte intégral sur disque : {item.get('full_path')}"
+                self.allow_reread(f"confluence://{page_id}", reason)
+            items.append(text)
+        return items
 
     def to_json(self) -> dict:
         return {
@@ -446,14 +459,21 @@ def _jira_search_block(item: dict) -> str:
     return "\n".join(lines)
 
 
-def _page_block(item: dict) -> str:
+PAGE_BODY_CHARS = 3500
+
+
+def _page_block(item: dict) -> tuple[str, bool]:
+    """Page chargée : corps dans le budget. Résultat de recherche : citation courte (candidat)."""
     title = item.get("title") or item.get("page") or "?"
     page_id = item.get("id") or item.get("page") or ""
-    quote = _clip(item.get("quote") or item.get("body") or item.get("text") or "", 400)
     header = f"### {title}"
     if page_id:
         header += f" · pageId {page_id}"
-    return f"{header}\n\n{quote}"
+    if item.get("quote") and not item.get("body"):
+        return f"{header}\n\n{_clip(item.get('quote') or '', 400)}", False
+    body = str(item.get("body") or item.get("text") or "").strip()
+    cut = len(body) > PAGE_BODY_CHARS
+    return f"{header}\n\n{_clip(body, PAGE_BODY_CHARS)}", cut
 
 
 def _image_block(item: dict) -> str:
