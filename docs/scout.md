@@ -37,6 +37,14 @@ filtrage que `log://`, crédentiels dans `.claude/.env.local` : `GITLAB_URL`,
 le nom ou l'historique porte le motif, avec leur statut de fusion vers
 main/master/develop — ramassage seulement, pas d'avis sur la bonne branche).
 
+`cql://<termes>` lance une recherche plein texte Confluence (titres, pageId, citation, corps
+sur disque). Les pages sont écrites entières sous `temp/scout/<clé>/pages/` ; « texte
+intégral » n'est écrit que si c'est vrai. Jusqu'à 20 captures passent à l'OCR, 8 sont
+affichées, les autres sont nommées dans `re-read_allowed` avec leur fichier OCR. Le ticket
+est aussi écrit tel que l'API le renvoie (`tickets/<clé>.json`), pour les skills qui veulent
+un `contexte.json` sans second appel Jira. L'enveloppe MCP donne une ligne `ramassage:`
+(caractères et images lus localement contre caractères rendus).
+
 OCR d'abord pour les captures. Avec `use_llm=true` et un modèle qui déclare la
 vision, jusqu'à 3 captures par mission dont l'OCR ne suffit pas (transcript
 vide, ou la mission évoque un trou de layout : en-tête fusionné, filtre,

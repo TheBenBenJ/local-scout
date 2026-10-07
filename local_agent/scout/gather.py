@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from datetime import datetime
@@ -21,6 +22,7 @@ from .dossier import Dossier
 
 _IMAGE_SUFFIX = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _MAX_LOG_BYTES = 5_000_000
+OCR_MAX_IMAGES = 20
 
 
 def gather(
@@ -48,6 +50,7 @@ def gather(
     log_sources: list[str] = []
     ci_sources: list[str] = []
     git_patterns: list[str] = []
+    cql_queries: list[str] = []
     if ticket:
         keys = extract.ticket_keys(ticket, primary=ticket)
     for uri in extra_uris:
@@ -71,6 +74,8 @@ def gather(
             ci_sources.append(uri.split("://", 1)[-1])
         elif lowered.startswith("git://"):
             git_patterns.append(uri.split("://", 1)[-1])
+        elif lowered.startswith("cql://"):
+            cql_queries.append(uri.split("://", 1)[-1])
 
     extraction = extract.is_extraction(mission)
     primary_key = keys[0] if keys else ""
@@ -154,7 +159,7 @@ def gather(
             and (extraction or extract.wants_ocr(mission, text))
             and packed.get("attachment_files")
         ):
-            saved = jira_provider.save_images(packed, pieces, config.repo_root)
+            saved = jira_provider.save_images(packed, pieces, config.repo_root, limit=OCR_MAX_IMAGES)
             if saved:
                 packed["pieces_dir"] = _relative(config, pieces)
             for path in saved:
@@ -165,13 +170,19 @@ def gather(
 
     started = time.monotonic()
     seen_ocr: set[str] = set()
-    for path in ocr_paths[:8]:
+    for path in ocr_paths[:OCR_MAX_IMAGES]:
         resolved = str(path.resolve()) if path.exists() else str(path)
         if resolved in seen_ocr:
             continue
         seen_ocr.add(resolved)
         _ocr_one(config, dossier, path, out_dir / "ocr")
         dossier.read_sources.append(_relative(config, path))
+    skipped = ocr_paths[OCR_MAX_IMAGES:]
+    if skipped:
+        names = ", ".join(path.name for path in skipped[:10])
+        dossier.missed.append(f"{len(skipped)} capture(s) non lue(s) par scout (plafond {OCR_MAX_IMAGES}) : {names}")
+        for path in skipped:
+            dossier.allow_reread(_relative(config, path), "capture au-delà du plafond OCR")
     _mark(dossier, "ocr", started)
 
     started = time.monotonic()
@@ -202,6 +213,17 @@ def gather(
         dossier.read_sources.append(f"confluence://{page_id}")
         dossier.ledger.add_text("confluence", str(packed.get("body") or packed.get("text") or ""))
     need_page = not extraction or extract.wants_confluence(mission)
+    for query in cql_queries[:3]:
+        found = confluence_provider.search(query, config.repo_root, limit=5)
+        results = list(found.get("results") or [])
+        for item in results:
+            item["full_path"] = _write_page(config, item, out_dir / "pages")
+        dossier.confluence_searches.append(
+            {"query": query, "results": results, "error": found.get("error") if not results else None}
+        )
+        dossier.read_sources.append(f"cql://{query}")
+        for item in results:
+            dossier.ledger.add_text("confluence", str(item.get("body") or ""))
     if diagnosis and need_page and not dossier.pages:
         goal = str(dossier.tickets[0].get("goal") or "") if dossier.tickets else ""
         query = extract.confluence_query(mission, ticket_blob, goal)
@@ -220,7 +242,7 @@ def gather(
                 dossier.read_sources.append(f"confluence://{page_id}")
             dossier.ledger.add_text("confluence", str(item.get("quote") or item.get("body") or ""))
         if not dossier.pages and not dossier.confluence_note:
-            dossier.confluence_note = f"non cherchée : 0 page pour {query!r}"
+            dossier.confluence_note = f"cherchée, 0 page pour {query!r}"
     _mark(dossier, "confluence", started)
 
     named_symbols = extract.merge(extract.symbols(blob, limit=16), body_symbols, limit=12)
@@ -284,7 +306,7 @@ def gather(
             _grep_symbol(config, dossier, symbol, seen_files)
     _mark(dossier, "code", started)
 
-    _type_url_uuids(config, dossier, f"{ticket_blob}\n{mission}")
+    _type_url_uuids(config, dossier, f"{ticket_blob}\n{mission}", report_holes=not extraction)
     dossier.raw_chars = dossier.ledger.text_chars()
     if extract.is_grep_mission(mission):
         for symbol in named_symbols:
@@ -431,6 +453,12 @@ def _write_ticket(config: Config, packed: dict, directory: Path) -> str:
         directory.mkdir(parents=True, exist_ok=True)
         target = directory / f"{packed.get('key')}.md"
         target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        if packed.get("raw") is not None:
+            # Réponse API telle quelle : les skills qui veulent un contexte.json n'ont pas à rappeler Jira.
+            (directory / f"{packed.get('key')}.json").write_text(
+                json.dumps(packed["raw"], ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+            packed["raw_path"] = _relative(config, directory / f"{packed.get('key')}.json")
     except OSError:
         return ""
     return _relative(config, target)
@@ -623,7 +651,7 @@ def _run_jira_search(config: Config, dossier: Dossier, mission: str, keys: list[
     dossier.jira_search = packed
 
 
-def _type_url_uuids(config: Config, dossier: Dossier, blob: str) -> None:
+def _type_url_uuids(config: Config, dossier: Dossier, blob: str, *, report_holes: bool = True) -> None:
     seen: set[str] = set()
     for slug, value in extract.url_uuid_hits(blob):
         if value in seen:
@@ -640,7 +668,7 @@ def _type_url_uuids(config: Config, dossier: Dossier, blob: str) -> None:
                 "note": note,
             }
         )
-        if not param:
+        if not param and report_holes:
             _hole(
                 dossier,
                 f"UUID non typé : {value} (segment URL {slug}, paramètre de route introuvable)",
