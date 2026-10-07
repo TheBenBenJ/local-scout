@@ -58,6 +58,7 @@ class Dossier:
     annots: list[dict] = field(default_factory=list)
     indexes: list[dict] = field(default_factory=list)
     logs: list[dict] = field(default_factory=list)
+    confluence_searches: list[dict] = field(default_factory=list)
     branches: list[dict] = field(default_factory=list)
     missed: list[str] = field(default_factory=list)
     re_read_allowed: list[dict] = field(default_factory=list)
@@ -83,7 +84,7 @@ class Dossier:
                 return
         self.re_read_allowed.append({"path": path, "reason": reason})
 
-    def markdown(self, *, cap: int = DOSSIER_MAX_CHARS) -> str:
+    def markdown(self, *, cap: int = DOSSIER_MAX_CHARS, _second_pass: bool = False) -> str:
         primary = [item for item in self.tickets if item.get("role") != "linked"]
         linked = [item for item in self.tickets if item.get("role") == "linked"]
         if not primary and self.tickets:
@@ -103,17 +104,30 @@ class Dossier:
                     + ", ".join(ticket_cuts)
                     + (
                         f" ; texte intégral sur disque : {primary_item.get('full_path')}"
+                        + (f" (API brute : {primary_item.get('raw_path')})" if primary_item.get("raw_path") else "")
                         if primary_item.get("full_path")
                         else " ; recharger seulement ces parties"
                     ),
                 )
             sections.append(_Section("ticket", "## Ticket", [ticket_text], 5000, 180, 1))
         if self.images:
+            shown = self.images[:IMAGES_SHOWN]
+            hidden = self.images[IMAGES_SHOWN:]
+            image_items = [_image_block(item) for item in shown]
+            if hidden:
+                for item in hidden:
+                    target = item.get("ocr_path") or item.get("path") or item.get("name") or "capture"
+                    self.allow_reread(str(target), f"capture {item.get('name')} : OCR non affiché, texte sur disque")
+                image_items.append(
+                    f"{len(hidden)} autre(s) capture(s) non affichée(s) : "
+                    + ", ".join(str(item.get("name")) for item in hidden[:12])
+                    + " — OCR sur disque, chemins dans re-read_allowed."
+                )
             sections.append(
                 _Section(
                     "images",
                     "## Captures",
-                    [_image_block(item) for item in self.images],
+                    image_items,
                     3600,
                     120,
                     2,
@@ -140,8 +154,14 @@ class Dossier:
             sections.append(_Section("code", "## Code", code_items, 1600, 200, 2))
         if self.pages:
             sections.append(
-                _Section("pages", "## Confluence", self._page_items(), 4000, 100, 2)
+                _Section("pages", "## Confluence", self._page_items(), PAGE_SECTION_CHARS, 100, 2)
             )
+        if self.confluence_searches:
+            sections.append(
+                _Section("cql", "## Recherche Confluence", [_cql_block(item) for item in self.confluence_searches], 1800, 160, 2)
+            )
+        if self.pages:
+            pass
         elif self.confluence_note:
             sections.append(
                 _Section("pages", "## Confluence", [self.confluence_note], 200, 40, 2)
@@ -217,14 +237,29 @@ class Dossier:
             sections.append(
                 _Section("locations", "## Locations", [f"- {item}" for item in self.locations], 300, 60, 2)
             )
-        return _pack(_header(self), sections, _tail(self), cap)
+        text = _pack(_header(self), sections, _tail(self), cap)
+        # Le budget peut encore écarter des captures affichables : les nommer plutôt que les taire.
+        dropped = [item for item in self.images[:IMAGES_SHOWN] if f"### {item.get('name')}" not in text]
+        if dropped and not _second_pass:
+            for item in dropped:
+                target = item.get("ocr_path") or item.get("path") or item.get("name") or "capture"
+                self.allow_reread(str(target), f"capture {item.get('name')} : écartée par le budget, OCR sur disque")
+            return self.markdown(cap=cap, _second_pass=True)
+        return text
 
     def _page_items(self) -> list[str]:
         items = []
-        for item in self.pages[:2]:
-            text, cut = _page_block(item)
-            if cut:
-                page_id = item.get("id") or item.get("page") or ""
+        loaded = [item for item in self.pages if item.get("body") or item.get("text")]
+        share = max(1500, PAGE_SECTION_CHARS // max(1, len(loaded)))
+        for item in self.pages[:PAGE_MAX]:
+            text, cut = _page_block(item, limit=share)
+            page_id = item.get("id") or item.get("page") or ""
+            if item.get("body_truncated"):
+                self.allow_reread(
+                    f"confluence://{page_id}",
+                    "copie sur disque tronquée par le garde-fou serveur : relire la page en direct",
+                )
+            elif cut:
                 reason = "corps tronqué à l'affichage"
                 if item.get("full_path"):
                     reason += f" ; texte intégral sur disque : {item.get('full_path')}"
@@ -235,7 +270,7 @@ class Dossier:
     def to_json(self) -> dict:
         return {
             "mission": self.mission,
-            "tickets": self.tickets,
+            "tickets": [{k: v for k, v in item.items() if k != "raw"} for item in self.tickets],
             "pages": self.pages,
             "images": [
                 {
@@ -289,7 +324,7 @@ def _header(dossier: Dossier) -> str:
         lines.append(f"Ne pas conclure à l'absence. Locations : {locs}")
     if dossier.re_read_allowed:
         lines.append("re-read_allowed:")
-        for item in dossier.re_read_allowed[:12]:
+        for item in dossier.re_read_allowed[:30]:
             lines.append(f"- `{item.get('path')}` : {item.get('reason')}")
         lines.append(
             "« Ne pas relire » ne s'applique qu'aux sources dont l'extrait est complet pour la mission."
@@ -395,6 +430,8 @@ def _ticket_block(item: dict, typed: list[dict] | None = None) -> tuple[str, lis
         if item.get("pieces_dir"):
             line += f" — images déjà enregistrées sous `{item.get('pieces_dir')}`"
         lines.extend(["", line])
+    if item.get("raw_path") and not cuts:
+        lines.extend(["", f"Réponse API brute sur disque : `{item.get('raw_path')}` (pas de second appel Jira)."])
     if item.get("show_comments"):
         comments = list(item.get("comments") or [])
         total = int(item.get("comment_total") or len(comments))
@@ -460,9 +497,11 @@ def _jira_search_block(item: dict) -> str:
 
 
 PAGE_BODY_CHARS = 3500
+PAGE_SECTION_CHARS = 7000
+PAGE_MAX = 3
 
 
-def _page_block(item: dict) -> tuple[str, bool]:
+def _page_block(item: dict, *, limit: int = PAGE_BODY_CHARS) -> tuple[str, bool]:
     """Page chargée : corps dans le budget. Résultat de recherche : citation courte (candidat)."""
     title = item.get("title") or item.get("page") or "?"
     page_id = item.get("id") or item.get("page") or ""
@@ -472,8 +511,8 @@ def _page_block(item: dict) -> tuple[str, bool]:
     if item.get("quote") and not item.get("body"):
         return f"{header}\n\n{_clip(item.get('quote') or '', 400)}", False
     body = str(item.get("body") or item.get("text") or "").strip()
-    cut = len(body) > PAGE_BODY_CHARS
-    return f"{header}\n\n{_clip(body, PAGE_BODY_CHARS)}", cut
+    cut = len(body) > limit
+    return f"{header}\n\n{_clip(body, limit)}", cut
 
 
 def _image_block(item: dict) -> str:
@@ -499,6 +538,7 @@ def _image_block(item: dict) -> str:
     return "\n".join(lines)
 
 
+IMAGES_SHOWN = 8
 OCR_IMAGE_CHARS = 1000
 OCR_IMAGE_LINES = 30
 
@@ -581,6 +621,21 @@ def _branch_block(item: dict) -> str:
         )
     if not item.get("branches"):
         lines.append("- 0 branche candidate.")
+    return "\n".join(lines)
+
+
+def _cql_block(item: dict) -> str:
+    query = item.get("query") or "?"
+    lines = [f"### `cql://{query}`"]
+    if item.get("error"):
+        lines.append(str(item["error"]))
+        return "\n".join(lines)
+    for row in item.get("results") or []:
+        extra = f" — texte intégral : `{row.get('full_path')}`" if row.get("full_path") else ""
+        lines.append(f"- **{row.get('title')}** · pageId {row.get('id')}{extra}")
+        quote = _clip(str(row.get("quote") or ""), 300)
+        if quote:
+            lines.append(f"  {quote}")
     return "\n".join(lines)
 
 

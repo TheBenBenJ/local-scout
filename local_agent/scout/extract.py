@@ -163,7 +163,7 @@ def as_repo_path(uri: str) -> str | None:
     if not raw:
         return None
     lowered = raw.lower()
-    if lowered.startswith(("jira://", "confluence://", "image://", "log://", "ci://", "git://")):
+    if lowered.startswith(("jira://", "confluence://", "image://", "log://", "ci://", "git://", "cql://")):
         return None
     if lowered.startswith("repo://"):
         raw = raw.split("://", 1)[-1]

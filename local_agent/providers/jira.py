@@ -152,6 +152,7 @@ def fetch(key: str, repo_root: Path | None = None, *, attachments: bool = True) 
     return {
         "configured": True,
         "key": key,
+        "raw": issue,
         "goal": fields.get("summary") or "",
         "acceptance_criteria_verbatim": str(description or "").strip()[:_MAX_TEXT],
         "comments": _comments(fields.get("comment")),

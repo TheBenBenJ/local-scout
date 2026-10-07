@@ -1158,6 +1158,45 @@ def _test_extraction_mission() -> None:
     page_md = page_dossier.markdown()
     check("page : corps rendu au-delà de 400 caractères", len(_page_block(page_dossier.pages[0])[0]) > 3000)
     check("page : coupe signalée avec fichier", "confluence://2505965569" in page_md and "pages/2505965569.md" in page_md)
+    three = Dossier(mission="Lire trois pages")
+    for index in range(3):
+        three.pages.append({"id": f"10{index}", "title": f"Page {index}", "body": f"PAGE{index}-START " + "x " * 4000})
+    three_md = three.markdown()
+    check("trois pages : toutes rendues", all(f"PAGE{index}-START" in three_md for index in range(3)))
+    check("trois pages : chaque coupe signalée", all(f"confluence://10{index}" in three_md for index in range(3)))
+
+    from local_agent import version as version_mod
+
+    original_version = version_mod.SERVER_VERSION
+    version_mod.SERVER_VERSION = "0.0.1"
+    try:
+        check("serveur périmé signalé", "périmé" in version_mod.stale_note() and "stale:" in format_ping())
+    finally:
+        version_mod.SERVER_VERSION = original_version
+    check("serveur à jour silencieux", version_mod.stale_note() == "")
+    many = Dossier(mission="Lire toutes les captures")
+    for index in range(12):
+        many.images.append({"name": f"cap-{index}.png", "path": f"/x/cap-{index}.png", "transcript": f"CAP{index} texte", "ocr_path": f"temp/scout/x/ocr/cap-{index}.txt"})
+    many_md = many.markdown()
+    check("captures au-delà de 8 : annoncées", "4 autre(s) capture(s)" in many_md)
+    check("captures au-delà de 8 : OCR relisible", any("cap-11.txt" in str(i.get("path")) for i in many.re_read_allowed))
+
+    big_page = Dossier(mission="Lire la page")
+    big_page.pages.append({"id": "9", "title": "Spec", "body": "x " * 3000, "body_truncated": True, "full_path": "temp/scout/x/pages/9.md"})
+    big_md = big_page.markdown()
+    check("page tronquée par le serveur : dit, pas « intégral »", "relire la page en direct" in big_md and "texte intégral" not in big_md.split("## Mission")[0])
+
+    cql_dossier = Dossier(mission="Chercher")
+    cql_dossier.confluence_searches.append({"query": "polyvalent", "results": [{"id": "1", "title": "Paie", "quote": "CQL-PROOF cycle de 455 h", "full_path": "temp/scout/x/pages/1.md"}], "error": None})
+    cql_md = cql_dossier.markdown()
+    check("cql : section et citation", "## Recherche Confluence" in cql_md and "CQL-PROOF" in cql_md)
+    check("cql : source reconnue", extract.as_repo_path("cql://salarié polyvalent") is None)
+
+    raw_dossier = Dossier(mission="Extraire LYSI-3")
+    raw_dossier.tickets.append({"key": "LYSI-3", "goal": "t", "issuetype": "Anomalie", "status": "Ouvert", "acceptance_criteria_verbatim": "court", "comments": [], "raw": {"fields": {"x": 1}}, "raw_path": "temp/scout/LYSI-3/tickets/LYSI-3.json"})
+    check("json brut : chemin annoncé", "LYSI-3.json" in raw_dossier.markdown())
+    check("json brut : hors dossier.json", "raw" not in raw_dossier.to_json()["tickets"][0])
+
     check("écran décrit par une capture n'exige pas de code", extract.wants_screen("Lire les captures, écran Journaux Quadra") is False)
     check("chemin absolu conservé", extract.as_repo_path("/abs/dir/image-1.png") == "/abs/dir/image-1.png")
     check("chercher dans Confluence n'est pas un JQL", extract.wants_jira_search("Chercher dans Confluence la doc") is False)

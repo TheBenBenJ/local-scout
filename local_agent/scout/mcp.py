@@ -10,7 +10,7 @@ from pathlib import Path
 from ..config import get_config
 from ..files import GuardrailError
 from ..mlx import MlxError
-from ..version import SERVER_VERSION, git_head
+from ..version import SERVER_VERSION, git_head, stale_note
 from .engine import run_scout
 
 SERVER_NAME = "local-scout"
@@ -56,7 +56,8 @@ TOOLS = [
                     "items": {"type": "string"},
                     "description": (
                         "Optional jira://, confluence://, repo paths, log://<path>, "
-                        "ci://gitlab/<project>/<job_id>, git://<pattern-or-ticket>"
+                        "ci://gitlab/<project>/<job_id>, git://<pattern-or-ticket>, "
+                        "cql://<terms> (Confluence full-text search, titles + pageId + quote)"
                     ),
                 },
                 "use_llm": {
@@ -81,12 +82,17 @@ def want_llm(arguments: dict) -> bool:
 
 def format_ping() -> str:
     head = (git_head() or "")[:7]
-    return f"ok\nversion: {SERVER_VERSION}\ngit: {head}\n"
+    text = f"ok\nversion: {SERVER_VERSION}\ngit: {head}\n"
+    note = stale_note()
+    return text + (f"stale: {note}\n" if note else "")
 
 
 def format_scout(result) -> str:
     ready = bool(getattr(result, "ready", not result.errors))
     lines = [f"ready_for_diagnosis: {str(ready).lower()}"]
+    note = stale_note()
+    if note:
+        lines.append(f"stale: {note}")
     allowed = list(getattr(result, "re_read_allowed", None) or [])
     if allowed:
         lines.append("re-read_allowed:")
@@ -97,6 +103,16 @@ def format_scout(result) -> str:
     if not ready and result.errors and not listed:
         lines.append("errors:")
         lines.extend(f"- {error}" for error in result.errors)
+    ledger = getattr(result, "ledger", None) or {}
+    raw = int(getattr(result, "raw_chars", 0) or 0)
+    images = int(getattr(result, "image_count", 0) or 0)
+    visible = int(getattr(result, "visible_chars", 0) or len(markdown))
+    if raw or images:
+        lines.append(
+            f"ramassage: {raw} car. de texte"
+            + (f" + {images} image(s) ({int(ledger.get('image_bytes') or 0) // 1000} Ko)" if images else "")
+            + f" lus localement, {visible} car. rendus"
+        )
     lines.append("---")
     return "\n".join(lines) + "\n" + markdown
 

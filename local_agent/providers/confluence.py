@@ -15,7 +15,8 @@ from . import atlassian
 _TAG = re.compile(r"<[^>]+>", re.DOTALL)
 _MACRO = re.compile(r"<ac:structured-macro[^>]*?ac:name=\"([^\"]+)\"[^>]*>", re.DOTALL)
 _UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE)
-_MAX_BODY = 12000
+# Garde-fou serveur seulement : une page de spec dépasse souvent 12 000 caractères.
+_MAX_BODY = 400_000
 
 
 def storage_text(raw: str) -> str:
@@ -66,6 +67,7 @@ def _pack(page: str, item: dict) -> dict:
         "space": space,
         "version": (item.get("version") or {}).get("number"),
         "body": storage_text(str(body))[:_MAX_BODY],
+        "body_truncated": len(storage_text(str(body))) > _MAX_BODY,
     }
 
 
@@ -179,6 +181,8 @@ def search(query: str, repo_root: Path | None = None, *, limit: int = 3) -> dict
                 "title": page.get("title"),
                 "space": page.get("space"),
                 "quote": (page.get("body") or "")[:400],
+                "body": page.get("body") or "",
+                "body_truncated": bool(page.get("body_truncated")),
             }
         )
     empty["results"] = packed
