@@ -434,11 +434,42 @@ def _write_page(config: Config, packed: dict, directory: Path) -> str:
     return _relative(config, target)
 
 
+def _ticket_people_and_links(raw) -> list[str]:
+    """Dates, personnes, versions et liens : sans eux, le lecteur fouille le JSON brut du ticket."""
+    fields = (raw or {}).get("fields") if isinstance(raw, dict) else None
+    if not isinstance(fields, dict):
+        return []
+
+    def name(value) -> str:
+        return str((value or {}).get("displayName") or "?") if isinstance(value, dict) else "?"
+
+    lines = [
+        f"Créé : {str(fields.get('created') or '?')[:16]} par {name(fields.get('reporter'))}"
+        f" · Mis à jour : {str(fields.get('updated') or '?')[:16]} · Assigné : {name(fields.get('assignee'))}"
+    ]
+    versions = [str(v.get("name")) for v in fields.get("fixVersions") or [] if isinstance(v, dict)]
+    if versions:
+        lines.append(f"Versions corrigées : {', '.join(versions)}")
+    links = []
+    for link in fields.get("issuelinks") or []:
+        if not isinstance(link, dict):
+            continue
+        for side, label in (("outwardIssue", "outward"), ("inwardIssue", "inward")):
+            other = link.get(side)
+            if isinstance(other, dict):
+                status = ((other.get("fields") or {}).get("status") or {}).get("name") or "?"
+                links.append(f"{(link.get('type') or {}).get(label) or '?'} {other.get('key')} ({status})")
+    if links:
+        lines.append(f"Liens : {' ; '.join(links)}")
+    return lines
+
+
 def _write_ticket(config: Config, packed: dict, directory: Path) -> str:
     """Ticket intégral en texte sur disque : le drill-down lit ce fichier, pas un second appel Jira."""
     lines = [
         f"# {packed.get('key')} — {packed.get('goal')}",
         f"Type : {packed.get('issuetype')} · Statut : {packed.get('status')} · Priorité : {packed.get('priority') or '?'}",
+        *_ticket_people_and_links(packed.get("raw")),
         "",
         "## Description",
         str(packed.get("acceptance_criteria_verbatim") or ""),
