@@ -1338,6 +1338,26 @@ def _test_gitlab_provider() -> None:
                 os.environ.pop(key, None)
 
 
+
+def check_ticket_header() -> None:
+    from local_agent.scout.gather import _ticket_people_and_links
+
+    raw = {"fields": {
+        "created": "2026-10-02T09:35:10.628+0200", "updated": "2026-10-05T04:00:10.408+0200",
+        "reporter": {"displayName": "Souâd El Mansouri"}, "assignee": {"displayName": "Diana COLLET"},
+        "fixVersions": [{"name": "1.26.5"}],
+        "issuelinks": [{"type": {"outward": "Doublon", "inward": "a pour doublon"},
+                        "outwardIssue": {"key": "LYSI-6591", "fields": {"status": {"name": "En production"}}}}],
+    }}
+    lines = _ticket_people_and_links(raw)
+    check("ticket md: date, rapporteur et assigné", lines[0] == "Créé : 2026-10-02T09:35 par Souâd El Mansouri · Mis à jour : 2026-10-05T04:00 · Assigné : Diana COLLET")
+    check("ticket md: versions corrigées", "Versions corrigées : 1.26.5" in lines)
+    check("ticket md: liens avec statut", "Liens : Doublon LYSI-6591 (En production)" in lines)
+    check("ticket md: sans réponse brute, rien", _ticket_people_and_links(None) == [])
+    unassigned = _ticket_people_and_links({"fields": {"assignee": None}})
+    check("ticket md: non assigné", unassigned == ["Créé : ? par ? · Mis à jour : ? · Assigné : ?"])
+
+
 if __name__ == "__main__":
     main()
-
+    check_ticket_header()
