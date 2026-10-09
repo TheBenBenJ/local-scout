@@ -1,6 +1,6 @@
 # local-scout
 
-![Keep large context local. Send the orchestrator only what matters.](docs/architecture.jpg)
+![Keep large context local. Send the orchestrator only what matters.]
 
 > Keep large context local. Send the orchestrator only what matters.
 
