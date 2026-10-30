@@ -342,8 +342,8 @@ TOOLS: list[dict] = [
 ]
 
 
-USAGE_LOG = Path.home() / ".local-agent" / "usage.jsonl"
-USAGE_TOTALS = Path.home() / ".local-agent" / "usage-totals.json"
+USAGE_LOG = Path.home() / ".local-scout" / "usage.jsonl"
+USAGE_TOTALS = Path.home() / ".local-scout" / "usage-totals.json"
 
 
 def _log_usage(

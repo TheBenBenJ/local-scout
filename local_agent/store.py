@@ -21,7 +21,7 @@ from .files import GuardrailError
 
 IMAGE_PACKET_ID = re.compile(r"^[0-9a-f]{8}$")
 
-DB_PATH = Path.home() / ".local-agent" / "context.db"
+DB_PATH = Path.home() / ".local-scout" / "context.db"
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,14 +89,14 @@ _PREFIX = {
     "rule": "RULE-E",
     "data": "DATA-E",
 }
-SESSION_FILE = Path.home() / ".local-agent" / "session.id"
+SESSION_FILE = Path.home() / ".local-scout" / "session.id"
 _CODE_PLAIN = re.compile(r"^E(\d+)$", re.IGNORECASE)
 _CODE_FULL = re.compile(r"^CODE-E(\d+)$", re.IGNORECASE)
 _STORE_ID = re.compile(
     r"^(CODE-E|IMG-E|LOG-E|TEST-E|DIFF-E|JIRA-E|DOC-E|RULE-E|DATA-E|E)\d+$",
     re.IGNORECASE,
 )
-TRACE_DIR = Path.home() / ".local-agent" / "traces"
+TRACE_DIR = Path.home() / ".local-scout" / "traces"
 
 
 def _now() -> str:

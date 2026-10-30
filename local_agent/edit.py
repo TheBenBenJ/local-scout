@@ -20,7 +20,7 @@ from .report import Report
 
 LINT_FAILURE_MARKERS = ("Parse error", "syntax error", "Errors parsing", "Fatal error")
 
-PATCH_DIR = Path.home() / ".local-agent" / "patches"
+PATCH_DIR = Path.home() / ".local-scout" / "patches"
 PATCH_RETENTION_SECONDS = 7 * 24 * 3600
 
 

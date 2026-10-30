@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .files import GuardrailError
 
-EVIDENCE_DIR = Path.home() / ".local-agent" / "evidence"
+EVIDENCE_DIR = Path.home() / ".local-scout" / "evidence"
 RETENTION_SECONDS = 7 * 24 * 3600
 
 
