@@ -10,6 +10,7 @@ on:
   pull_request:
     branches: [main]
     paths-ignore: ['**.md']
+  workflow_dispatch:   # a manual run, e.g. after a history rewrite (a forced push may not start one)
 
 permissions:
   contents: read
