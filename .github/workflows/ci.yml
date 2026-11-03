@@ -1,0 +1,86 @@
+# Light CI: syntax checks and the test suite, on the oldest Python the README promises
+# and on the newest. Standard library only: nothing to install but ripgrep.
+# No secret, no deployment, no model, no network beyond setting up the runner.
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
+  pull_request:
+    branches: [main]
+    paths-ignore: ['**.md']
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: checks (Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 3.9 is the oldest Python the README promises (and macOS's /usr/bin/python3).
+          # No 3.9 build exists for Ubuntu 26.04, the next ubuntu-latest: keep 24.04 for it.
+          - python: '3.9'
+            os: ubuntu-24.04
+          - python: '3.14'
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install ripgrep
+        run: |
+          sudo apt-get install -y -qq ripgrep > /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep > /dev/null; }
+
+      - name: List scripts by language
+        # Without an extension (bin/local-scout...), the shebang decides. Links are skipped.
+        run: |
+          git ls-files -z | while IFS= read -r -d '' f; do
+            [ -f "$f" ] && [ ! -L "$f" ] || continue
+            case "${f##*/}" in
+              *.py) echo "$f" >> "$RUNNER_TEMP/python.list"; continue ;;
+              *.json) echo "$f" >> "$RUNNER_TEMP/json.list"; continue ;;
+              *.sh) ;;
+              *.*) continue ;;
+            esac
+            case "$(head -n 1 "$f")" in
+              '#!'*zsh*) echo "$f" >> "$RUNNER_TEMP/zsh.list" ;;
+              '#!'*bash*|'#!'*/sh|'#!'*/sh' '*) echo "$f" >> "$RUNNER_TEMP/bash.list" ;;
+              '#!'*python*) echo "$f" >> "$RUNNER_TEMP/python.list" ;;
+            esac
+          done
+          touch "$RUNNER_TEMP"/{python,json,bash,zsh}.list
+          wc -l "$RUNNER_TEMP"/*.list
+
+      - name: Python (py_compile)
+        run: |
+          status=0
+          while IFS= read -r f; do python -m py_compile "$f" || status=1; done < "$RUNNER_TEMP/python.list"
+          exit $status
+
+      - name: bash (bash -n, shellcheck -S error)
+        run: |
+          status=0
+          while IFS= read -r f; do bash -n "$f" || status=1; done < "$RUNNER_TEMP/bash.list"
+          if [ -s "$RUNNER_TEMP/bash.list" ]; then tr '\n' '\0' < "$RUNNER_TEMP/bash.list" | xargs -0 shellcheck -S error || status=1; fi
+          exit $status
+
+      - name: JSON (json.tool)
+        run: |
+          status=0
+          while IFS= read -r f; do python -m json.tool "$f" > /dev/null || status=1; done < "$RUNNER_TEMP/json.list"
+          exit $status
+
+      - name: Tests (tests/run_all.py)
+        # On Linux the OCR test skips its macOS Vision part (the Swift sample needs macOS).
+        run: python tests/run_all.py
