@@ -57,7 +57,7 @@ Notes:
 - Case B no longer calls a local LLM when high-signal excerpts exist (0.04 s extract vs 4–5 s LLM). The planted cause stays in runtime evidence. `rg ERROR` remains ~800× faster. A 35B/9B sentence on that digest is optional, not the default.
 - Case C with `image://` + `repo://` is routed AGENT (multi-source). On the 9B: 5.7 s, 3 local LLM calls, same `DIV`/`HCP` hits as the 35B at 13.6 s. Deterministic compare without a repo pointer remains faster (0.72 s) and smaller, but misses `DIV`.
 - Case E baseline A (80 kB) is still an assumed PHPUnit-style dump.
-- Live Jira: credentials from acme `.claude/.env.local`, base `https://example.atlassian.net`. Before the first-tool fix, jira-only DIRECT called `search_repo` and never fetched the issue. Interception is not scored: the router still estimates 8 kB / 2 000 tok, not the real issue payload.
+- Live Jira: credentials from the client repository's `.claude/.env.local`, on the client's Atlassian Cloud site. Before the first-tool fix, jira-only DIRECT called `search_repo` and never fetched the issue. Interception is not scored: the router still estimates 8 kB / 2 000 tok, not the real issue payload.
 - Live Confluence: same token, page id `1323499521`. DIRECT, 0 LLM, 0.3 s, 105 tok JSON. `"body"` did not appear in the packet. Same 8 kB estimate as Jira, not scored as interception.
 
 ## Quality evaluation (keyword recall, scale 0–4)
@@ -114,7 +114,7 @@ First session A run scored 0: DIRECT stored OCR `score=0.265…` and dropped the
 
 ## Cursor jsonl (not billed)
 
-Streamed 56 transcripts under the acme Cursor `agent-transcripts` folder, 2 September 2026. Cursor jsonl stores **tool calls, not tool results**. File bodies billed at the time are missing. `eligible_read` reconstructs `Read` paths still on disk (limit × 200 chars, else file size).
+Streamed 56 transcripts under the client project's Cursor `agent-transcripts` folder, 2 September 2026. Cursor jsonl stores **tool calls, not tool results**. File bodies billed at the time are missing. `eligible_read` reconstructs `Read` paths still on disk (limit × 200 chars, else file size).
 
 | Scope | jsonl | Already in jsonl | Reconstructed Read | Reads / missing | Grep calls |
 | ----- | ---: | ---------------: | -----------------: | --------------- | ---------: |
@@ -176,11 +176,11 @@ The fallback is by design. The cost of the fallback is what this measures: 43x l
 
 Commands:
 
-    LOCAL_AGENT_REPO_ROOT=/Users/benjaminmille/.local-scout ./bin/local-scout --json task \
+    LOCAL_AGENT_REPO_ROOT=~/.local-scout ./bin/local-scout --json task \
       "Where is the deterministic tier routing decided, and which function returns the initial action hint?" \
       --source "repo://local_agent/router.py"
 
-    LOCAL_AGENT_REPO_ROOT=/Users/benjaminmille/.local-scout ./bin/local-scout --json task \
+    LOCAL_AGENT_REPO_ROOT=~/.local-scout ./bin/local-scout --json task \
       "Locate the definitions of route_task and initial_action_hint." \
       --source "repo://local_agent/router.py"
 
@@ -190,9 +190,9 @@ The `Where` grep leak (fallback ignored `STOPWORDS`) was fixed after this measur
 
 ## MCP freshness verified (2026-09-02)
 
-`local_ping` with `repo=/Users/benjaminmille/.local-agent` returns `server.git_head 1f532ea4713f`, equal to the CLI. REDUCE locations came back relative (`var/bench.log:1-4`), and `jira://ACME-5177` routed DIRECT to `fetch_issue` with 0 local LLM calls, 0.6 s, 150 visible tokens, title only, description kept in the store. Priority 2 below is closed for this client.
+`local_ping` with `repo=~/.local-agent` returns `server.git_head 1f532ea4713f`, equal to the CLI. REDUCE locations came back relative (`var/bench.log:1-4`), and `jira://ACME-5177` routed DIRECT to `fetch_issue` with 0 local LLM calls, 0.6 s, 150 visible tokens, title only, description kept in the store. Priority 2 below is closed for this client.
 
-Jira credentials resolve from the target repo's `.claude/.env.local`, so `jira://` needs `repo` pointed at acme. With `repo` on local-agent the packet returns `JIRA-E2 Jira is not configured` in DIRECT, 0 LLM.
+Jira credentials resolve from the target repo's `.claude/.env.local`, so `jira://` needs `repo` pointed at the client repository. With `repo` on local-agent the packet returns `JIRA-E2 Jira is not configured` in DIRECT, 0 LLM.
 
 ## Product verdict (from these runs)
 

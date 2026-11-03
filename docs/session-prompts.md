@@ -1,41 +1,47 @@
-# Prompts de conversation + bench terrain
+# Field replay prompts and dossier bench
 
-Cinq chats **neufs**, dépôt **ACME** (pas `~/.local-scout`). MCP `user-local-scout` version **1.8.x** (`scout_ping`). `use_llm=false`. Un appel `scout` par chat.
+Five **fresh** chats, workspace = the client repository the cases were taken from (not
+`~/.local-scout`). MCP `user-local-scout` at version **1.8.x** or later (check with `scout_ping`).
+`use_llm=false`. One `scout` call per chat.
 
-Le score automatique porte sur le **dossier**, pas sur les cartes Cursor. Les Usage rows se remplissent à la main, comme dans [`session-bench.md`](session-bench.md).
+The automatic score is about the **dossier**, not the Cursor usage cards. Usage rows are filled in
+by hand, as in [`session-bench.md`](session-bench.md).
 
-## Imprimer / noter
+The exact chat prompts are French, like the tickets they replay. They live in
+`local_agent/scout/cases.py` and are printed by the CLI, so this page only summarizes them.
+
+## Print / score
 
 ```bash
-# Prompt collable
+# Prompt ready to paste
 ~/.local-scout/bin/local-scout bench --print-prompt ACME-6160
 ~/.local-scout/bin/local-scout bench --print-prompt ACME-6417-pdf
 ~/.local-scout/bin/local-scout bench --print-prompt ACME-6417-dir
 ~/.local-scout/bin/local-scout bench --print-prompt ACME-6553-c1
 ~/.local-scout/bin/local-scout bench --print-prompt ACME-6553-c2
 
-# Grille sur le dépôt client (Jira réel, --no-llm)
-cd /chemin/vers/acme
+# Grid on the client repository (real Jira, --no-llm)
+cd /path/to/client/repo
 ~/.local-scout/bin/local-scout bench --cases --repo . --out temp/scout/bench-terrain
 
-# Noter un dossier.md produit dans un chat
+# Score a dossier.md produced in a chat
 ~/.local-scout/bin/local-scout bench --score-dossier temp/scout/ACME-6553/dossier.md --case ACME-6553-c2 --repo .
 ```
 
-Cas : `ACME-6160`, `ACME-6417-pdf`, `ACME-6417-dir`, `ACME-6553-c1`, `ACME-6553-c2`.
+Cases: `ACME-6160`, `ACME-6417-pdf`, `ACME-6417-dir`, `ACME-6553-c1`, `ACME-6553-c2`.
 
-## Comment jouer un chat
+## How to play a chat
 
-1. Nouveau chat, workspace = dépôt ACME.
-2. Coller **un** des prompts ci-dessous (ou la sortie de `--print-prompt`).
-3. Vérifier `scout_ping` → `version: 1.8.0` (ou plus).
-4. L’agent appelle `scout` **une fois**, diagnostique depuis le dossier.
-5. Tout Read/curl Jira/PNG hors `re-read_allowed` = **scout miss** (fallback).
-6. Remplir la ligne Usage + la grille. Noter le dossier : `--score-dossier`.
+1. New chat, workspace = the client repository.
+2. Paste **one** prompt (the output of `--print-prompt`).
+3. Check `scout_ping` → `version: 1.8.0` (or later).
+4. The agent calls `scout` **once** and diagnoses from the dossier.
+5. Any Read / Jira curl / PNG outside `re-read_allowed` = **scout miss** (fallback).
+6. Fill in the Usage row and the grid. Score the dossier with `--score-dossier`.
 
-Qualité diagnostic (A et C) : 0 faux, 1 partiel, 2 juste mais preuves minces, 3 juste avec assez de preuves.
+Diagnosis quality (A and C): 0 wrong, 1 partial, 2 right but thin evidence, 3 right with enough evidence.
 
-| Chat | input | output | cache r | cache w | tools | durée | qualité 0–3 | fallbacks | bench % |
+| Chat | input | output | cache r | cache w | tools | duration | quality 0–3 | fallbacks | bench % |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 6160 | | | | | | | | | |
 | 6417-pdf | | | | | | | | | |
@@ -43,177 +49,84 @@ Qualité diagnostic (A et C) : 0 faux, 1 partiel, 2 juste mais preuves minces, 3
 | 6553-c1 | | | | | | | | | |
 | 6553-c2 | | | | | | | | | |
 
-`C < A` n’est **pas** le critère ici : on mesure si le dossier 1.8 tient les écarts terrain. Un chat A (MCP off) reste optionnel, ticket par ticket, si tu veux un delta Usage.
+`C < A` is **not** the criterion here: this measures whether the 1.8 dossier holds the field gaps.
+A chat A (MCP off) stays optional, ticket by ticket, if you want a Usage delta.
 
 ---
 
-## ACME-6160 — revue e-reporting
+## ACME-6160 — code review
 
-Échec d’origine : `lib/…/IopoleConnector.php` réécrit en `src/…` → « fichier nommé absent » ; extraits sur le mauvais type ; « Ne pas relire » alors que le fichier était tronqué.
+Original failure: a `lib/…/src/…` connector path rewritten as `src/…`, hence "named file missing";
+excerpts from the wrong type; "Do not re-read" although the file was truncated.
 
-```text
-Nouveau chat. Dépôt ACME (pas ~/.local-scout). MCP user-local-scout ON. Relancer le serveur si la version n'est pas 1.8.x.
+Prompt: code review of a daily e-reporting handler (batch creation, routing). Exactly one `scout`
+call with `ticket` and the connector file in `sources`, `use_llm=false`; no fix, qualify afterwards.
 
-Tu es l'orchestrateur. Scout est un FILTRE de sources lourdes. Il ne diagnostique pas.
-Un seul appel `scout`. use_llm=false. Ne pas curl Jira, ne pas Read le connecteur en entier.
+Scorecard (yes/no):
+- the `lib/…` bundle path is kept, no "named file missing";
+- the handler, the batch methods and the messenger routing named in the mission are all found;
+- no invented "Trous" (gaps) section; truncation announced when the file is not complete;
+- 0 fallback Read/curl outside the gaps.
 
-Revue de code ACME-6160 : e-reporting quotidien, lots SIREN.
-Ne corrige pas. Qualifie ensuite.
+## ACME-6417 — PDF Annots (file)
 
-Appelle exactement :
+Original failure: no Annot extractor, OCR of the neighbouring PNGs, Jira fetched without `ticket=`.
 
-scout(
-  mission="Revue de code ACME-6160 e-reporting quotidien lots SIREN. Extraire le handler quotidien, createAndSubmitBatchesOn + continue si le lot existe, findValidatedWithoutBatchOn, routing messenger.yaml.",
-  ticket="ACME-6160",
-  sources=["lib/facture-electronique-bundle/src/Iopole/Connector/IopoleConnector.php"],
-  use_llm=false
-)
+Prompt: extract the yellow comments (Highlight Annots) of the review PDF attached to the ticket,
+passing the PDF file itself in `sources`, no `ticket`, `use_llm=false`. If the exact path moved,
+pass the real path of the same file (same basename), not its parent folder.
 
-Depuis le dossier :
-- Trancher / qualifier. Relire seulement les paths marqués tronqués ou re-read_allowed.
-- Vérifier au grep les comptages. Ne pas conclure à l'absence sans Locations.
+Scorecard:
+- `ready_for_diagnosis` true when there are Annots, false otherwise, with gaps listed;
+- Highlight `/Contents` present; faithful PDF path;
+- no OCR of neighbouring files, no ticket dump;
+- 0 PNG Read, 0 Jira curl.
 
-Fin de chat — scorecard (oui/non) :
-- chemin lib/facture-electronique-bundle conservé, pas « fichier nommé absent »
-- EreportingQuotidienMessageHandler, createAndSubmitBatchesOn, continue, findValidatedWithoutBatchOn, messenger.yaml
-- pas de section Trous inventée ; troncature annoncée si le fichier n'est pas intégral
-- 0 fallback Read/curl hors Trous
-```
+## ACME-6417 — folder = index (separate chat)
 
----
+Same mission, but `sources` is the **folder**, not the PDF: scout must index it, not extract the
+Annots. Expected: `ready_for_diagnosis: false`, a gaps section, `re-read_allowed` pointing at the PDF.
 
-## ACME-6417 — Annot PDF (fichier)
+Scorecard:
+- index listing the PDF name;
+- ready false; gaps / `re-read_allowed` towards the PDF file;
+- no OCR of the folder's PNGs.
 
-Échec d’origine : pas d’extracteur Annot, OCR des PNG voisins, Jira sans `ticket=`.
+## ACME-6553 — call 1 (ticket + screen)
 
-```text
-Nouveau chat. Dépôt ACME. MCP user-local-scout ON, version 1.8.x.
+Original failure: "Trous : aucun" (no gaps) while Confluence, the `render` screen and the typing
+of the `salarieId` URL parameter were missing; a controller picked only because of a `use()`;
+an OCR "novel".
 
-Tu es l'orchestrateur. Scout filtre. use_llm=false. Un seul appel.
-Ne pas OCR le PDF comme une capture. Ne pas OCR les PNG du même dossier.
-Ne pas fetch Jira : ticket= n'est pas fourni.
+Prompt: diagnose a planned duration / counter / gauge stuck at 0 on a planning screen. Gather the
+ticket, screenshots, the screen (the controller that renders it), the domain Confluence page and
+the typed URL UUIDs; do not conclude absence without a gaps section. `ticket` given, `use_llm=false`.
 
-Mission : extraire les commentaires jaunes (Annot Highlight) du PDF de revue ACME-6417.
-Ne pas diagnostiquer le métier. Lister les annots (auteur, page, /Contents).
+Scorecard:
+- compact `## Ticket` (type, status, ≤ 8 lines, typed UUIDs);
+- the expected controller as the screen, not the one that merely `use()`s the service;
+- Confluence (title + pageId + quote) OR a "not searched" gap;
+- `ready_for_diagnosis` not true while a blocking gap is missing from the gaps section;
+- 0 Jira curl, 0 PNG Read.
 
-Appelle exactement :
+## ACME-6553 — call 2 (linked tickets + JQL)
 
-scout(
-  mission="Commentaires jaunes de REVIEW-functional-summary.pdf (ACME-6417). Extraire les Annot Highlight, pas l'OCR du PDF.",
-  sources=["temp/64XX/6417/contexte/pieces_jointes/REVIEW-functional-summary.pdf"],
-  use_llm=false
-)
+Original failure: `sources` was set, so no JQL ran; Claude had to curl `search/jql`; the OCR of
+linked ticket 6271 (a screenshot showing a person's name) was inlined in the 6553 dossier.
 
-Si le chemin exact n'existe pas, passe le chemin réel du même fichier (basename identique), pas le dossier parent.
+**Fresh chat**, do not paste the dossier of call 1.
 
-Depuis le dossier : recopie les annots. Pas de Jira. Pas de screenshot voisin.
+Prompt: fetch five linked tickets **and** search for an existing ticket about the same defect, with
+the linked tickets passed as `jira://` sources and `use_llm=false`. Scout must run the JQL even
+though `sources` is set.
 
-Fin de chat — scorecard :
-- ready_for_diagnosis true s'il y a des Annot, false sinon avec Trous
-- Highlight /Contents présents ; chemin PDF fidèle
-- pas d'OCR voisin, pas de dump ticket
-- 0 Read PNG, 0 curl Jira
-```
+Scorecard:
+- `## Recherche Jira` with the JQL, even with 0 candidates;
+- no OCR of linked ticket 6271 (no "16 additional items omitted" from a linked OCR);
+- the `:salarieId` UUID typed, with "this is not the planning id";
+- the expected controller; the other one dismissed or marked "incidental mention";
+- `## Trous` not empty (not "aucun") while Confluence is missing;
+- 0 curl of `search/jql`.
 
----
-
-## ACME-6417 — dossier = index (chat séparé)
-
-```text
-Nouveau chat. Dépôt ACME. MCP user-local-scout ON.
-
-Même mission ACME-6417, mais `sources` est le DOSSIER, pas le PDF.
-Scout doit indexer, pas extraire les Annot. ready_for_diagnosis: false, section Trous, re-read_allowed vers le PDF.
-
-scout(
-  mission="Commentaires jaunes du dossier pieces_jointes ACME-6417. Extraire les Annot du PDF.",
-  sources=["temp/64XX/6417/contexte/pieces_jointes"],
-  use_llm=false
-)
-
-Si le dossier a bougé, passe le dossier qui contient REVIEW-functional-summary.pdf.
-
-Scorecard :
-- index avec le nom du PDF
-- ready false ; Trous / re-read_allowed vers le fichier PDF
-- pas d'OCR des PNG du dossier
-```
-
----
-
-## ACME-6553 — appel 1 (ticket + écran)
-
-Échec d’origine : « Trous : aucun » alors que Confluence, l’écran `render` et le typage `salarieId` manquaient ; ChantierController sorti pour un `use()` ; OCR roman.
-
-```text
-Nouveau chat. Dépôt ACME. MCP user-local-scout ON, version 1.8.x.
-
-Tu es l'orchestrateur. Scout filtre. use_llm=false. Un seul appel pour CET échange.
-Ne pas diagnostiquer à la place du dossier. Ne pas curl search/jql. Ne pas Read des PNG.
-
-Diagnostiquer ACME-6553 (durée planifiée / compteur / jauge à 0, planning polyvalents).
-Ne pas corriger. Qualifier ensuite.
-
-Appelle exactement :
-
-scout(
-  mission="Diagnostiquer ACME-6553 : durée planifiée, compteur ou jauge à 0 sur le planning des polyvalents. Rassembler ticket, captures, écran (contrôleur qui render), page Confluence du domaine, UUID d'URL typés. Ne pas conclure à l'absence sans Trous.",
-  ticket="ACME-6553",
-  use_llm=false
-)
-
-Depuis le dossier :
-- L'écran attendu est PlanificationBonsTravauxController (render planification_bt / dureePlanifiee), pas un autre contrôleur qui use() PlanificationBonsService.
-- Chaque UUID d'URL : valeur | :paramètreDeRoute | entité. Si :salarieId → ce n'est pas l'id de planification.
-- Captures : tableau court + « OCR bruit ». Pas de roman OCR.
-- « Trous : aucun » seulement si ticket + Confluence + écran render + UUID typés.
-- Mesurer encore (SQL, grep, rejeu) toi-même. Scout ne compte pas (« N journées », « 71 plannings »).
-
-Fin de chat — scorecard :
-- ## Ticket compact (type, statut, ≤ 8 lignes, UUID typés)
-- écran TravauxController, pas ChantierController comme écran
-- Confluence (titre+pageId+citation) OU Trous « non cherchée »
-- pas ready_for_diagnosis true si un trou bloquant n'est pas dans Trous
-- 0 curl Jira, 0 Read PNG
-```
-
----
-
-## ACME-6553 — appel 2 (liés + JQL)
-
-Échec d’origine : `sources` rempli → aucun JQL ; Claude a dû curl `search/jql` ; OCR CARTAUD de 6271 dans le dossier 6553.
-
-**Chat neuf**, ne pas coller le dossier de l’appel 1.
-
-```text
-Nouveau chat, suite de ACME-6553. Dépôt ACME. MCP user-local-scout ON.
-N'importe PAS le dossier de l'appel 1. Un seul appel scout. use_llm=false.
-
-La mission contient FETCH des tickets liés ET une RECHERCHE d'un ticket existant
-sur le même défaut. Scout doit faire le JQL même si `sources` est rempli.
-Ne pas curl /rest/api/3/search/jql. Ne pas inliner l'OCR du ticket lié 6271 (CARTAUD).
-
-Appelle exactement :
-
-scout(
-  mission="fetch ACME-6005 ACME-6109 ACME-1871 ACME-6130 ACME-6271 et chercher un ticket existant sur le même défaut (compteur/jauge/durée planifiée à 0, planning polyvalents). ne pas conclure à l'absence sans les résultats.",
-  ticket="ACME-6553",
-  sources=["jira://ACME-6005", "jira://ACME-6109", "jira://ACME-1871", "jira://ACME-6130", "jira://ACME-6271"],
-  use_llm=false
-)
-
-Le dossier DOIT contenir ## Recherche Jira (JQL, N, ≤ 5 candidats, ou « non exécutée : … »).
-Trous non vide tant que Confluence et le typage salarieId/planif n'y sont pas.
-ACME-6005 : résumé + fixVersions (MEP 1.24.12) sans pièces.
-CARTAUD / dump OCR 6271 : interdit.
-
-Fin de chat — scorecard :
-- ## Recherche Jira avec JQL, même si 0 candidat
-- pas CARTAUD, pas « 16 additional items omitted » d'OCR lié
-- UUID :salarieId + « ce n'est pas l'id de planification »
-- PlanificationBonsTravauxController ; Chantier écarté ou « mention incidente »
-- ## Trous non vide (pas « aucun ») si Confluence absente
-- 0 curl search/jql
-```
-
-Critère d’acceptation appel 2 : section Recherche Jira (même vide, avec JQL) ; Trous non vide tant que Confluence et le typage manquent ; OCR CARTAUD de 6271 absent.
+Acceptance criterion for call 2: a Jira search section (even empty, with the JQL); gaps not empty
+while Confluence and the typing are missing; no inlined OCR from linked ticket 6271.

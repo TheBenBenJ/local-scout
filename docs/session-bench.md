@@ -8,7 +8,7 @@ Do not convert [`BENCHMARKS.md`](../BENCHMARKS.md) `interception_rate` into this
 
 Ticket: **ACME-6476** (Jira + screenshots + repo). Same attachments, same repo HEAD, same model, same user prompt. New chat per scenario. No copy-paste of a previous dossier into A or B.
 
-Suggested mission text (identical in A, B, C):
+Suggested mission text (identical in A, B, C; French, like the ticket):
 
 ```text
 Diagnostiquer ACME-6476. Ne pas corriger. Qualifier ensuite.
@@ -52,7 +52,7 @@ Replay prompts for the later terrain tickets (6160, 6417, 6553) and the dossier 
 
 ```bash
 ~/.local-scout/bin/local-scout bench --print-prompt ACME-6553-c2
-~/.local-scout/bin/local-scout bench --cases --repo /chemin/vers/acme --out temp/scout/bench-terrain
+~/.local-scout/bin/local-scout bench --cases --repo /path/to/client/repo --out temp/scout/bench-terrain
 ```
 
 | | A | B | C |

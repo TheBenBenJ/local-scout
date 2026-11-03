@@ -1,17 +1,17 @@
 # Scout
 
-L'orchestrateur n'enchaîne plus Jira / OCR / expand. Les extracteurs
-déterministes ramassent Jira, pièces, Confluence et rg. Un dossier ≤ 12 000
-caractères sort. Le 9B n'est appelé que si on le demande (`use_llm` côté MCP,
-absence de `--no-llm` côté CLI).
+The orchestrator no longer chains Jira / OCR / expand calls. Deterministic
+extractors gather Jira, attachments, Confluence and `rg` results, and a single
+dossier of at most 12,000 characters comes out. The 9B model only runs when
+asked (`use_llm` on the MCP side, no `--no-llm` on the CLI side).
 
-Dépôt : https://github.com/TheBenBenJ/local-scout
+Repository: https://github.com/TheBenBenJ/local-scout
 
-## Pourquoi
+## Why
 
-Le MCP à 14 outils (`local_task`, `local_expand`, …) interceptait le brut **par appel**.
-Sur une discussion, chaque tour renvoyait les schémas + l'historique des paquets.
-Mesure ACME-6476 « avec local-agent » : +2,2 M tokens Cursor.
+The 14-tool MCP (`local_task`, `local_expand`, …) intercepted raw material **per call**.
+Over a conversation, every turn sent the tool schemas back, plus the history of packets.
+Measured on ACME-6476 "with local-agent": +2.2 M Cursor tokens.
 
 ## Install
 
@@ -20,93 +20,93 @@ git clone https://github.com/TheBenBenJ/local-scout ~/.local-scout
 ~/.local-scout/install.sh
 ```
 
-MCP : `scout` et `scout_ping` uniquement. `scout` est déterministe par défaut.
-`--out` n'existe que sur la CLI.
+MCP: `scout` and `scout_ping` only. `scout` is deterministic by default.
+`--out` only exists on the CLI.
 
-Un appel par mission. Diagnostiquer depuis le dossier. Relire seulement
-les paths marqués tronqués, `re-read_allowed`, ou les ids demandés en
-drill-down. `sources` est une liste fermée : un fichier = ce fichier,
-un dossier = son index. PDF : objets Annot d'abord, jamais un OCR du
-document « au cas où ». Ticket Jira seulement si `ticket` est fourni.
+One call per mission. Diagnose from the dossier. Re-read only the paths
+marked truncated, listed in `re-read_allowed`, or the ids requested as a
+drill-down. `sources` is a closed list: a file means that file, a folder
+means its index. PDF: Annot objects first, never an OCR of the document
+"just in case". A Jira ticket is fetched only when `ticket` is given.
 
-Schémas de source : `repo://`, `jira://`, `confluence://`, `image://`,
-`log://<chemin>` (fichier local, échecs + contexte gardés, bruit répétitif
-dédupliqué), `ci://gitlab/<projet>/<job_id>` (trace de job GitLab, même
-filtrage que `log://`, crédentiels dans `.claude/.env.local` : `GITLAB_URL`,
-`GITLAB_TOKEN`, `GITLAB_PROJECT_ID`), `git://<motif>` (branches locales dont
-le nom ou l'historique porte le motif, avec leur statut de fusion vers
-main/master/develop — ramassage seulement, pas d'avis sur la bonne branche).
+Source schemes: `repo://`, `jira://`, `confluence://`, `image://`,
+`log://<path>` (local file: failures plus context kept, repetitive noise
+de-duplicated), `ci://gitlab/<project>/<job_id>` (GitLab job trace, same
+filtering as `log://`, credentials in `.claude/.env.local`: `GITLAB_URL`,
+`GITLAB_TOKEN`, `GITLAB_PROJECT_ID`), `git://<pattern>` (local branches whose
+name or history carries the pattern, with their merge status into
+main/master/develop: gathering only, no opinion on which branch is right).
 
-`cql://<termes>` lance une recherche plein texte Confluence (titres, pageId, citation, corps
-sur disque). Les pages sont écrites entières sous `temp/scout/<clé>/pages/` ; « texte
-intégral » n'est écrit que si c'est vrai. Jusqu'à 20 captures passent à l'OCR, 8 sont
-affichées, les autres sont nommées dans `re-read_allowed` avec leur fichier OCR. Le ticket
-est aussi écrit tel que l'API le renvoie (`tickets/<clé>.json`), pour les skills qui veulent
-un `contexte.json` sans second appel Jira. L'enveloppe MCP donne une ligne `ramassage:`
-(caractères et images lus localement contre caractères rendus).
+`cql://<terms>` runs a Confluence full-text search (titles, pageId, quote, body
+on disk). Pages are written whole under `temp/scout/<key>/pages/`; "full
+text" is only written when it is true. Up to 20 screenshots go through OCR, 8 are
+shown, the others are named in `re-read_allowed` with their OCR file. The ticket
+is also written as the API returns it (`tickets/<key>.json`), for skills that want
+a `contexte.json` without a second Jira call. The MCP envelope carries a `ramassage:`
+line (characters and images read locally versus characters returned).
 
-OCR d'abord pour les captures. Avec `use_llm=true` et un modèle qui déclare la
-vision, jusqu'à 3 captures par mission dont l'OCR ne suffit pas (transcript
-vide, ou la mission évoque un trou de layout : en-tête fusionné, filtre,
-bouton disabled) reçoivent une seconde passe vision, layout seulement — les
-chiffres restent ceux de l'OCR.
+OCR first for screenshots. With `use_llm=true` and a model that declares
+vision, up to 3 screenshots per mission whose OCR is not enough (empty
+transcript, or the mission hints at a layout gap: merged header, filter,
+disabled button) get a second vision pass, for layout only: the numbers
+remain those of the OCR.
 
 ```
-scout(mission="Diagnostiquer ACME-6476 …", ticket="ACME-6476")
+scout(mission="Diagnose PROJ-123 …", ticket="PROJ-123")
 ```
 
-CLI :
+CLI:
 
 ```bash
-~/.local-scout/bin/local-scout --ticket ACME-6476 --no-llm
-~/.local-scout/bin/local-scout --ticket ACME-6476
+~/.local-scout/bin/local-scout --ticket PROJ-123 --no-llm
+~/.local-scout/bin/local-scout --ticket PROJ-123
 ~/.local-scout/bin/local-scout doctor
 ```
 
-Sortie disque : `temp/scout/<clé>/dossier.md` dans le dépôt cible (debug).
-Le chemin n'est pas renvoyé dans la réponse MCP.
+Output on disk: `temp/scout/<key>/dossier.md` in the target repository (debug).
+That path is not returned in the MCP response.
 
-Protocole de session A/B/C : [`session-bench.md`](session-bench.md).
-Prompts terrain 6160 / 6417 / 6553 + grille : [`session-prompts.md`](session-prompts.md).
+A/B/C session protocol: [`session-bench.md`](session-bench.md).
+Field prompts 6160 / 6417 / 6553 and scoring grid: [`session-prompts.md`](session-prompts.md).
 
-## Ce que l'analyse des sessions a changé (2 oct 2026)
+## What the session review changed (2 Oct 2026)
 
-Dix appels `scout` relevés dans les transcripts Claude Code du 14/09 au 01/10 : dans les dix,
-l'orchestrateur a rechargé le ticket ou rouvert les PNG juste après. Causes corrigées :
+Ten `scout` calls found in the Claude Code transcripts from 14/09 to 01/10: in all ten,
+the orchestrator reloaded the ticket or reopened the PNGs right afterwards. Causes fixed:
 
-- corps du ticket coupé à 600 caractères / 8 lignes alors que le dossier n'utilisait qu'un
-  tiers de son plafond : le corps passe maintenant en entier tant que le budget le permet ;
-- ni commentaires, ni liens, ni priorité, ni champs personnalisés : ils sont rendus, les champs
-  nommés dans la mission d'abord (« vide dans Jira » s'ils le sont) ;
-- section Code hors sujet (motifs d'un ticket de planification codés en dur) : la recherche
-  d'écran part des URL et symboles du ticket, et ne tourne pas pour une mission « Extraire… » ;
-- `ready: false` systématique faute de page Confluence, cherchée avec les verbes de la consigne :
-  une mission d'extraction n'exige ni page ni écran, et la requête part du titre du ticket ;
-- OCR réduit à quelques lignes filtrées par mots-clés : transcript dans l'ordre de lecture,
-  borné par image, intégral dans `temp/scout/<clé>/ocr/<image>.txt` ;
-- image passée en chemin absolu marquée « non extraite » ; Jira « non configuré » depuis un
-  worktree git (le `.env.local` du checkout principal est maintenant lu).
+- ticket body cut at 600 characters / 8 lines while the dossier only used a third of its
+  cap: the body now goes in whole as long as the budget allows;
+- no comments, links, priority or custom fields: they are now rendered, the fields named
+  in the mission first ("empty in Jira" when they are);
+- off-topic Code section (patterns of a planning ticket hard-coded): the screen search
+  starts from the ticket's URLs and symbols, and does not run for an "Extraire…" mission;
+- `ready: false` every time for lack of a Confluence page, searched with the verbs of the
+  instruction: an extraction mission requires neither a page nor a screen, and the query
+  starts from the ticket title;
+- OCR reduced to a few keyword-filtered lines: the transcript now follows reading order,
+  bounded per image, in full in `temp/scout/<key>/ocr/<image>.txt`;
+- an image passed as an absolute path was marked "not extracted"; Jira was "not configured"
+  from a git worktree (the main checkout's `.env.local` is now read).
 
-Ce qui est coupé est nommé dans `re-read_allowed` avec un fichier texte sur disque
-(`temp/scout/<clé>/tickets/<clé>.md`) : le drill-down lit ce fichier.
+Whatever is cut is named in `re-read_allowed` with a text file on disk
+(`temp/scout/<key>/tickets/<key>.md`): the drill-down reads that file.
 
-## Mesure Cursor (ACME-6476, 9 sept 2026)
+## Cursor measurement (ACME-6476, 9 Sept 2026)
 
-Dans **une** session mesurée, diagnostiquer depuis un dossier scout **déjà écrit
-sur disque** a utilisé 59 % de moins d'usage reporté que la récupération directe
-(Jira HTTP + cinq PNG). Ce n'est pas « local-scout économise 59 % des tokens »
-en général : le chat pas cher n'a pas appelé `scout`. Ce n'est pas un `/analyse`
-recette.
+In **one** measured session, diagnosing from a scout dossier **already written
+to disk** used 59% less reported usage than direct retrieval (Jira over HTTP +
+five PNGs). This is not "local-scout saves 59% of tokens" in general: the cheap
+chat did not call `scout`. It is not a full `/analyse` run either.
 
-| Phase | Sans scout | Dossier déjà là | Économie |
+| Phase | Without scout | Dossier already there | Saving |
 | --- | ---: | ---: | ---: |
-| Terrain | 422,7 k | 60,5 k | 362,2 k |
-| Analyse | 380,3 k | 267,8 k | 112,5 k |
-| Session | 803,0 k | 328,3 k | **474,7 k (59 %)** |
+| Gather | 422.7 k | 60.5 k | 362.2 k |
+| Analysis | 380.3 k | 267.8 k | 112.5 k |
+| Session | 803.0 k | 328.3 k | **474.7 k (59%)** |
 
-## Compteurs internes
+## Internal counters
 
-`raw_chars` / `ledger.text_chars` : texte des sources, sur disque.
-`visible_chars` : longueur du dossier, sur disque. Pas dans la réponse MCP.
-Les octets PNG : `ledger.image_bytes`. Un % d'interception locale n'est pas
-un delta de cartes Cursor.
+`raw_chars` / `ledger.text_chars`: text of the sources, on disk.
+`visible_chars`: length of the dossier, on disk. Not in the MCP response.
+PNG bytes: `ledger.image_bytes`. A local interception percentage is not
+a delta of Cursor usage cards.
