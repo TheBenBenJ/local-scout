@@ -1,5 +1,5 @@
 # Light CI: syntax checks and the test suite, on the oldest Python the README promises
-# and on the newest. Standard library only: nothing to install but ripgrep.
+# and on the newest. Standard library only: nothing to install but ripgrep and tesseract.
 # No secret, no deployment, no model, no network beyond setting up the runner.
 name: CI
 
@@ -38,9 +38,11 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
 
-      - name: Install ripgrep
+      - name: Install ripgrep and tesseract
+        # The README's requirements, and tesseract (fra+eng), the OCR backend on Linux.
         run: |
-          sudo apt-get install -y -qq ripgrep > /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep > /dev/null; }
+          pkgs="ripgrep tesseract-ocr tesseract-ocr-fra"
+          sudo apt-get install -y -qq $pkgs > /dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq $pkgs > /dev/null; }
 
       - name: List scripts by language
         # Without an extension (bin/local-scout...), the shebang decides. Links are skipped.
@@ -84,7 +86,7 @@ jobs:
       - name: Remove swiftc
         # The runner ships Swift for Linux, but local-scout reads "swiftc present" as "macOS
         # Vision available" (ocr_vision.swift imports AppKit): test_ocr.py and test_router.py
-        # then fail. Test the usual Linux setup instead, where the Vision part is skipped.
+        # then fail. Test the usual Linux setup instead: OCR by tesseract, Vision skipped.
         run: |
           for p in $(type -ap swiftc); do sudo rm -f "$p"; done
           if command -v swiftc; then echo "::error::swiftc is still on PATH"; exit 1; fi
