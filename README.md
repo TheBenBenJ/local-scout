@@ -102,6 +102,9 @@ as a root.
 **Settings**: copy `local-agent.env.example` to `local-agent.env` (gitignored) in this folder.
 Real environment variables win. `LOCAL_LLM_*` selects the local model server (the former `MLX_*`
 names still work); `LOCAL_AGENT_*` sets the bounds.
+`LOCAL_SCOUT_JIRA_PROJECT` is the key of the Jira project whose tickets are recognised in missions and texts
+(default `ACME`, the example project of the tests and docs): one project only, on purpose, since a generic `KEY-123`
+pattern would also catch `UTF-8` or `SHA-256`.
 
 **Credentials** are never stored here. They come from the **target repository's**
 `.claude/.env.local` (`JIRA_URL`, `JIRA_USERNAME`, `JIRA_API_TOKEN`; `GITLAB_URL`, `GITLAB_TOKEN`,

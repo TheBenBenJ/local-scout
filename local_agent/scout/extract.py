@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import os
 import re
 
 from pathlib import Path
 
+from ..config import load_env_file
 from ..router import explicit_symbols
 
-ACME_KEY = re.compile(r"\bLYSI-\d+\b", re.IGNORECASE)
+# The Jira project whose ticket keys are recognised (LOCAL_SCOUT_JIRA_PROJECT). One project only, on purpose: a generic
+# KEY-123 pattern would also catch UTF-8, SHA-256 or ISO-8601. ACME is the example project of the tests and the docs.
+load_env_file()   # local-agent.env may set it; the real environment still wins
+PROJECT = (os.environ.get("LOCAL_SCOUT_JIRA_PROJECT") or "ACME").strip().upper()
+PROJECT_KEY = re.compile(rf"\b{re.escape(PROJECT)}-\d+\b", re.IGNORECASE)
 CONFLUENCE_URI = re.compile(r"confluence://(\d+)")
 CONFLUENCE_PAGE = re.compile(
     r"(?:atlassian\.net)?/wiki/spaces/[^/\s]+/pages/(\d{6,})",
@@ -55,7 +61,7 @@ _JIRA_SEARCH = re.compile(
     re.IGNORECASE,
 )
 _EXTRACTION = re.compile(
-    r"^\W*(?:ACME-\d+\s*:?\s*)?(?:extraire|recenser|lister|relever|lire|récupérer|recuperer|contexte de)\b",
+    rf"^\W*(?:{re.escape(PROJECT)}-\d+\s*:?\s*)?(?:extraire|recenser|lister|relever|lire|récupérer|recuperer|contexte de)\b",
     re.IGNORECASE,
 )
 # "écran" (screen) alone often describes what a screenshot shows: only a code word requires the controller.
@@ -100,7 +106,7 @@ _CLASS_SUFFIXES = (
 )
 
 _NOISE_SYMBOLS = {
-    "ACME", "Jira", "Confluence", "SILAE", "HTTP", "JSON", "UUID",
+    PROJECT, "Jira", "Confluence", "SILAE", "HTTP", "JSON", "UUID",
     "Bonjour", "Merci", "Attendu", "Problème", "Correction",
     "Exemple", "Exemples", "Commentaire", "Conclusion",
 }
@@ -119,15 +125,15 @@ def _uniq(items: list[str], *, limit: int) -> list[str]:
 
 
 def ticket_keys(text: str, *, primary: str | None = None, limit: int = 6) -> list[str]:
-    found = [match.group(0).upper() for match in ACME_KEY.finditer(text or "")]
+    found = [match.group(0).upper() for match in PROJECT_KEY.finditer(text or "")]
     normalized = []
     for key in found:
         if key not in normalized:
             normalized.append(key)
     if primary:
         head = primary.strip().upper()
-        if not head.startswith("ACME-"):
-            head = f"ACME-{head}" if head.isdigit() else head
+        if not head.startswith(f"{PROJECT}-"):
+            head = f"{PROJECT}-{head}" if head.isdigit() else head
         rest = [item for item in normalized if item != head]
         return _uniq([head] + rest, limit=limit)
     return _uniq(normalized, limit=limit)
@@ -256,7 +262,7 @@ def is_ticket_diagnosis(mission: str, keys: list[str], listed: list[str]) -> boo
 def jql_terms(text: str, *, limit: int = 6) -> list[str]:
     found: list[str] = []
     for token in re.findall(r"[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9']{3,}", text or ""):
-        if token.lower() in _JQL_STOP or token.upper().startswith("ACME"):
+        if token.lower() in _JQL_STOP or token.upper().startswith(PROJECT):
             continue
         if token.lower() not in {item.lower() for item in found}:
             found.append(token)
@@ -270,7 +276,7 @@ def build_jql(mission: str, *, exclude: list[str] | None = None) -> str:
     if not terms:
         return ""
     clauses = " OR ".join(f'text ~ "{term}"' for term in terms[:6])
-    jql = f"project = ACME AND ({clauses})"
+    jql = f"project = {PROJECT} AND ({clauses})"
     keys = [key for key in (exclude or []) if key]
     if keys:
         jql += " AND key NOT IN (" + ", ".join(keys) + ")"
@@ -353,7 +359,7 @@ def uuids(text: str, *, limit: int = 12) -> list[str]:
 
 
 def _useful(symbol: str) -> bool:
-    if not symbol or symbol in _NOISE_SYMBOLS or symbol.upper().startswith("ACME-"):
+    if not symbol or symbol in _NOISE_SYMBOLS or symbol.upper().startswith(f"{PROJECT}-"):
         return False
     if len(symbol) < 6:
         return False
