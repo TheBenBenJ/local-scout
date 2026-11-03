@@ -1,4 +1,4 @@
-"""OCR local d'une capture : Vision (macOS) ou Tesseract. La passe layout est dans vision.py."""
+"""Local OCR of a screenshot: Vision (macOS) or Tesseract. The layout pass lives in vision.py."""
 
 from __future__ import annotations
 
@@ -159,7 +159,7 @@ def collect_paths(path: str | None, paths: list | None) -> list[str]:
 
 
 def resolve_image_path(config: Config, raw: str) -> Path:
-    """Une capture vit rarement dans le dépôt : un chemin absolu hors git est accepté, un relatif non."""
+    """A screenshot rarely lives in the repository: an absolute path outside git is accepted, a relative one is not."""
     candidate = Path(raw).expanduser()
     if candidate.is_absolute():
         resolved = candidate.resolve()
@@ -203,7 +203,7 @@ def list_image_files(
     globs: list | None = None,
     max_files: int | None = None,
 ) -> list[Path]:
-    """Liste des captures sous la cible, sans le filtre binaire de la découverte code."""
+    """List the screenshots under the target, without the binary filter of code discovery."""
     limit = max(1, min(max_files or MAX_IMAGES, MAX_IMAGES))
     if target.is_file():
         return [target] if target.suffix.lower() in IMAGE_EXTENSIONS else []
@@ -258,7 +258,7 @@ def _usable_lines(lines: list[dict]) -> list[dict]:
 
 
 def row_clusters(lines: list[dict], y_tolerance: float = ROW_Y_TOLERANCE) -> list[list[dict]]:
-    """Regroupe les boîtes de même hauteur de lecture, gauche à droite."""
+    """Group boxes on the same reading line, left to right."""
     rows: list[list[dict]] = []
     for line in _usable_lines(lines):
         if rows and abs(float(rows[-1][0].get("y") or 0) - float(line.get("y") or 0)) <= y_tolerance:
@@ -424,7 +424,7 @@ def _run_tesseract(paths: list[Path]) -> list[dict]:
 
 
 def run_ocr(paths: list[Path]) -> tuple[list[dict], str]:
-    """Préfère Vision pour ne pas décharger le modèle de synthèse. Tesseract seulement en repli."""
+    """Prefer Vision so that the synthesis model is not unloaded. Tesseract only as a fallback."""
     if shutil.which("swiftc") or OCR_BINARY.is_file():
         try:
             return _run_vision(paths), "macos-vision"

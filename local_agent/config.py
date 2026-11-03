@@ -1,4 +1,4 @@
-"""Configuration du local-agent, pilotable par variables d'environnement."""
+"""local-agent configuration, driven by environment variables."""
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ def _tool_root() -> Path:
 
 
 def _repo_root() -> Path:
-    """L'outil vit hors des dépôts : la racine se déduit du répertoire courant."""
+    """The tool lives outside the repositories: the root is derived from the current directory."""
     override = (os.environ.get("LOCAL_AGENT_REPO_ROOT") or "").strip()
-    # Cursor ne substitue pas ${workspaceFolder} : un gabarit non résolu vaut absence de valeur.
+    # Cursor does not substitute ${workspaceFolder}: an unresolved template counts as no value.
     if override and "${" not in override:
         return Path(override).expanduser().resolve()
     try:
@@ -37,7 +37,7 @@ def _repo_root() -> Path:
 
 
 def load_env_file() -> None:
-    """Charge tools/local-agent/local-agent.env sans écraser l'environnement réel."""
+    """Load local-agent.env from the tool's folder without overriding the real environment."""
     path = _tool_root() / ENV_FILE_NAME
     if not path.is_file():
         return
@@ -53,7 +53,7 @@ def load_env_file() -> None:
 
 
 def _raw_env(*names: str) -> str:
-    """Première variable renseignée parmi les alias : LOCAL_LLM_* d'abord, MLX_* en rétrocompatibilité."""
+    """First non-empty variable among the aliases: LOCAL_LLM_* first, MLX_* for backward compatibility."""
     for name in names:
         value = (os.environ.get(name) or "").strip()
         if value:
@@ -98,14 +98,14 @@ def _first_bool(*names: str, default: bool) -> bool:
 class Config:
     repo_root: Path = field(default_factory=_repo_root)
 
-    # Tout serveur compatible OpenAI convient : mlx-serve, Ollama, llama.cpp, LM Studio, vLLM.
+    # Any OpenAI-compatible server works: mlx-serve, Ollama, llama.cpp, LM Studio, vLLM.
     base_url: str = field(
         default_factory=lambda: _str_env("LOCAL_LLM_BASE_URL", "http://127.0.0.1:11234/v1").rstrip("/")
     )
     model: str = field(default_factory=lambda: _str_env("LOCAL_LLM_MODEL", "auto"))
     api_key: str = field(default_factory=lambda: _str_env("LOCAL_LLM_API_KEY", ""))
-    # Une analyse n'a rien à gagner à varier. Sans rendre les réponses reproductibles pour autant : le
-    # serveur ne suit pas le même chemin numérique selon que le prompt est traité à froid ou en cache.
+    # An analysis has nothing to gain from variation. This does not make answers reproducible though: the
+    # server takes a different numerical path depending on whether the prompt is processed cold or cached.
     temperature: float = field(default_factory=lambda: _float_env("LOCAL_LLM_TEMPERATURE", 0.0))
     timeout: int = field(default_factory=lambda: _int_env("LOCAL_LLM_TIMEOUT", 300))
     max_completion_tokens: int = field(default_factory=lambda: _int_env("LOCAL_LLM_MAX_TOKENS", 1600))
@@ -113,8 +113,8 @@ class Config:
     max_files: int = field(default_factory=lambda: _int_env("LOCAL_AGENT_MAX_FILES", 40))
     max_file_size: int = field(default_factory=lambda: _int_env("LOCAL_AGENT_MAX_FILE_SIZE", 120_000))
     max_output_tokens: int = field(default_factory=lambda: _int_env("LOCAL_AGENT_MAX_OUTPUT_TOKENS", 900))
-    # Le prétraitement de l'entrée domine la latence : mesuré, 10 000 caractères coûtent 6,5 s contre
-    # 3,9 s pour 4 400, sans perte de justesse sur le banc. Élargir si une réponse manque de contexte.
+    # Input preprocessing dominates latency: measured, 10,000 characters cost 6.5 s versus
+    # 3.9 s for 4,400, with no loss of accuracy on the bench. Widen it if an answer lacks context.
     chunk_chars: int = field(default_factory=lambda: _int_env("LOCAL_AGENT_CHUNK_CHARS", 12_000))
     max_chunks: int = field(default_factory=lambda: _int_env("LOCAL_AGENT_MAX_CHUNKS", 8))
     max_matches: int = field(default_factory=lambda: _int_env("LOCAL_AGENT_MAX_MATCHES", 200))

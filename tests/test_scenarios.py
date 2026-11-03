@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scénarios A–E du prompt architecture, sans serveur LLM (client scripté)."""
+"""Scenarios A–E of the architecture prompt, without an LLM server (scripted client)."""
 
 from __future__ import annotations
 

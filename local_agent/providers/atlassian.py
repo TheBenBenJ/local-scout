@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 import urllib.request
 
-# Acme skills use JIRA_URL / JIRA_API_TOKEN / JIRA_USERNAME in .claude/.env.local.
+# Project skills use JIRA_URL / JIRA_API_TOKEN / JIRA_USERNAME in the repo's .claude/.env.local.
 # local-agent also accepts JIRA_BASE_URL / JIRA_TOKEN / JIRA_EMAIL.
 _FILES = (".claude/.env.local", ".env.local")
 _KEYS = {
@@ -43,7 +43,7 @@ def _parse_env_file(path: Path) -> dict[str, str]:
 
 
 def env_roots(repo_root: Path | None) -> list[Path]:
-    """Le dépôt cible, puis son checkout principal : un worktree git n'a pas le .env.local ignoré."""
+    """The target repository, then its main checkout: a git worktree lacks the ignored .env.local."""
     if repo_root is None:
         return []
     root = Path(repo_root)
@@ -68,7 +68,7 @@ def env_roots(repo_root: Path | None) -> list[Path]:
 
 def _file_values(repo_root: Path | None) -> dict[str, str]:
     merged: dict[str, str] = {}
-    # Le checkout principal d'abord, pour que le worktree puisse le surcharger.
+    # Main checkout first, so that the worktree can override it.
     for root in reversed(env_roots(repo_root)):
         for relative in _FILES:
             merged.update(_parse_env_file(root / relative))

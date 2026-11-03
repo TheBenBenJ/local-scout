@@ -1,4 +1,4 @@
-"""Exécution de commandes locales, restreinte à une liste blanche non destructrice."""
+"""Local command execution, restricted to a non-destructive allowlist."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ CHECKS_FILE = ".local-agent.json"
 
 DOCKER_PREFIX = ["docker", "compose", "exec", "-T", "symfony"]
 
-# Uniquement des commandes en lecture, aucune n'écrit en base applicative ni ne construit d'assets.
+# Read-only commands only: none writes to an application database or builds assets.
 _SYMFONY_CHECKS: dict[str, dict[str, object]] = {
     "phpstan": {
         "label": "PHPStan (analyse statique)",
@@ -81,11 +81,11 @@ def _preset_checks(repo_root: Path) -> dict[str, dict[str, object]]:
 
 
 def load_checks(config: Config) -> dict[str, dict[str, object]]:
-    """Contrôles du dépôt : `.local-agent.json` à la racine prime, sinon un preset selon le langage.
+    """Repository checks: `.local-agent.json` at the root wins, otherwise a preset per language.
 
-    Format du fichier : {"checks": {"nom": {"command": "npm test" ou ["npm", "test"],
-    "accepts_target": bool, "accepts_filter": bool, "default_target": "chemin", "in_container": bool}}}.
-    Seules ces commandes déclarées sont exécutables : le fichier est une liste blanche, pas un shell.
+    File format: {"checks": {"name": {"command": "npm test" or ["npm", "test"],
+    "accepts_target": bool, "accepts_filter": bool, "default_target": "path", "in_container": bool}}}.
+    Only these declared commands can run: the file is an allowlist, not a shell.
     """
     declared: dict[str, dict[str, object]] = {}
     manifest = config.repo_root / CHECKS_FILE
@@ -125,7 +125,7 @@ class CommandResult:
 
 
 def run(argv: list[str], cwd: Path, timeout: int) -> CommandResult:
-    """stdin est neutralisé pour qu'aucune commande ne consomme le flux JSON-RPC du serveur MCP."""
+    """stdin is neutralized so that no command consumes the MCP server's JSON-RPC stream."""
     printable = " ".join(argv)
     try:
         process = subprocess.run(

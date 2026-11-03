@@ -1,4 +1,4 @@
-"""GitLab adapter : trace de job CI seulement. Pas l'API pipeline complète, pas de diagnostic."""
+"""GitLab adapter: CI job trace only. Not the full pipeline API, no diagnosis."""
 
 from __future__ import annotations
 
@@ -62,7 +62,7 @@ def credentials(repo_root: Path | None = None) -> dict[str, str]:
 
 
 def fetch_trace(job_id: str, *, project: str = "", repo_root: Path | None = None) -> dict:
-    """Télécharge la trace brute d'un job. Le filtrage (échecs/erreurs) est fait par scout/logs.py."""
+    """Download the raw trace of a job. Filtering (failures/errors) is done by scout/logs.py."""
     job_id = str(job_id or "").strip()
     if not job_id:
         return {"error": "job id manquant"}

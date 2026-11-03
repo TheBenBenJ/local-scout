@@ -1,4 +1,4 @@
-"""CLI unique : scout, puis les commandes locales (doctor, task, …)."""
+"""Single CLI: scout, then the local commands (doctor, task, …)."""
 
 from __future__ import annotations
 

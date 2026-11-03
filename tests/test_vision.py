@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Vision locale : chemins fichier, pas de base64, OCR reste la source de vérité."""
+"""Local vision: file paths, no base64, OCR stays the source of truth."""
 
 from __future__ import annotations
 

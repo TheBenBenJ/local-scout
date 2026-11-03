@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MCP 15 outils retiré. Utiliser bin/local-scout-mcp (scout, scout_ping)."""
+"""The 15-tool MCP is retired. Use bin/local-scout-mcp (scout, scout_ping)."""
 
 import sys
 

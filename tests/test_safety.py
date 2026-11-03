@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Garde-fous : confinement, secrets, pas de shell, cache, providers absents."""
+"""Guardrails: confinement, secrets, no shell, cache, missing providers."""
 
 from __future__ import annotations
 

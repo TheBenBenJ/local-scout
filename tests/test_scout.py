@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scout : extract, dossier borné, ledger, MCP 2 outils. Pas de Jira live."""
+"""Scout: extract, bounded dossier, ledger, 2-tool MCP. No live Jira."""
 
 from __future__ import annotations
 
@@ -1042,7 +1042,7 @@ def _test_gather_git_source() -> None:
 
 
 def _test_ticket_truncation_flagged() -> None:
-    """ACME-6591 terrain : ce qui est coupé à l'affichage doit rester relisible, et dit."""
+    """ACME-6591 field case: what is cut at display time must stay re-readable, and say so."""
     long_body = "\n".join(
         ["Décisions", *[f"- étape {index} : transformer le champ X{index} en Y{index}" for index in range(200)]]
     )
@@ -1090,7 +1090,7 @@ def _test_ticket_truncation_flagged() -> None:
 
 
 def _test_extraction_mission() -> None:
-    """Sessions /analyse du 29/09 au 01/10 : « Extraire… » doit rendre un ticket complet et prêt."""
+    """/analyse sessions from 29/09 to 01/10: « Extraire… » must return a complete, ready ticket."""
     import subprocess
 
     from local_agent.config import Config
@@ -1244,7 +1244,7 @@ def _test_extraction_mission() -> None:
 
 
 def _test_maybe_vision() -> None:
-    """OCR seul ne suffit pas sur certaines captures : seconde passe vision, opt-in, bornée."""
+    """OCR alone is not enough on some screenshots: second vision pass, opt-in, bounded."""
     from local_agent.config import Config
     from local_agent.mlx import Completion
     from local_agent.scout import engine as engine_mod

@@ -1,4 +1,4 @@
-"""Avec scout vs sans scout, sur les mêmes sources. Pas une facture Cursor."""
+"""With scout vs without scout, on the same sources. Not a Cursor bill."""
 
 from __future__ import annotations
 

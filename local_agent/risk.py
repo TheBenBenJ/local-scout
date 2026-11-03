@@ -1,4 +1,4 @@
-"""Heuristics d'escalade : ce n'est pas une probabilite scientifique."""
+"""Escalation heuristics: this is not a scientific probability."""
 
 from __future__ import annotations
 

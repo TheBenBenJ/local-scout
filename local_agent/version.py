@@ -37,7 +37,7 @@ def git_head() -> str:
 
 
 def disk_version() -> str:
-    """Version du code sur disque : un serveur MCP long garde en mémoire celle de son démarrage."""
+    """Version of the code on disk: a long-running MCP server keeps the one it started with in memory."""
     try:
         text = (ROOT / "local_agent" / "version.py").read_text(encoding="utf-8")
     except OSError:

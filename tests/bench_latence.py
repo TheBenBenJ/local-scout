@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Banc de latence : où passe le temps, phase par phase.
+"""Latency bench: where the time goes, phase by phase.
 
-Un total ne dit pas quoi optimiser. Une recherche enchaîne deux appels au modèle (dérivation des motifs,
-puis synthèse) autour d'opérations disque quasi gratuites : seule la décomposition montre lequel des deux
-pèse, et donc s'il y a un levier.
+A total does not say what to optimize. A search chains two calls to the model (pattern derivation,
+then synthesis) around nearly free disk operations: only the breakdown shows which of the two
+weighs, and therefore whether there is a lever.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ def timed(function, *args, **kwargs):
 
 
 def phases(repo: Path, query: str, path: str) -> dict[str, float]:
-    """Chronomètre chaque étape d'une recherche, en appelant les modules directement."""
+    """Time each step of a search, calling the modules directly."""
     os.environ["LOCAL_AGENT_REPO_ROOT"] = str(repo)
     from local_agent import prompts
     from local_agent.config import get_config

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Grille OCR : reconstruction deterministe a partir des boites."""
+"""OCR grid: deterministic reconstruction from the boxes."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from local_agent.grid import build_grid, clean_cell, render_markdown_table  # noqa: E402
 
-# Boites Vision de temp/56XX/5662/.../image-20260819-150108.png
+# Vision boxes from temp/56XX/5662/.../image-20260819-150108.png
 TABLE = [
     {"text": "G", "x": 0.754, "y": 0.793, "width": 0.007, "height": 0.103, "confidence": 0.5},
     {"text": "D", "x": 0.567, "y": 0.776, "width": 0.007, "height": 0.121, "confidence": 0.5},

@@ -1,7 +1,7 @@
-"""Extraction déterministe d'échecs dans un log ou une trace CI. Jamais le brut entier.
+"""Deterministic extraction of failures from a log or a CI trace. Never the whole raw text.
 
-Même principe que pdf.py pour les Annot : on ne garde que les objets utiles (ici, les lignes
-signal + leur contexte proche), pas le document au cas où.
+Same principle as pdf.py for Annots: keep only the useful objects (here, the signal lines
+and their nearby context), not the document just in case.
 """
 
 from __future__ import annotations
@@ -31,10 +31,10 @@ DEFAULT_MAX_CHARS = 6000
 
 
 def extract_failures(text: str, *, max_chars: int = DEFAULT_MAX_CHARS) -> dict:
-    """Garde les lignes d'échec/erreur et leur contexte proche, dé-duplique le bruit répétitif.
+    """Keep failure/error lines and their nearby context, de-duplicate repetitive noise.
 
-    Sans signal (build propre, suite verte), rend la queue bornée plutôt que le brut : l'issue
-    d'un run est en général à la fin, et une absence de signal reste une donnée, pas un résumé.
+    Without a signal (clean build, green suite), return the bounded tail rather than the raw text: the
+    outcome of a run is usually at the end, and an absence of signal is still data, not a summary.
     """
     lines = (text or "").splitlines()
     total_lines = len(lines)
@@ -93,7 +93,7 @@ def extract_failures(text: str, *, max_chars: int = DEFAULT_MAX_CHARS) -> dict:
 
 
 def _dedupe(text: str) -> str:
-    """Collapse les runs de 3+ lignes identiques (barres de progression, dots répétés)."""
+    """Collapse runs of 3+ identical lines (progress bars, repeated dots)."""
     lines = text.splitlines()
     out: list[str] = []
     index = 0

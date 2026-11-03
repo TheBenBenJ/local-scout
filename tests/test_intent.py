@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contrôles sans modèle : le raccourci d'énumération ne doit pas viser une déclaration d'usage."""
+"""Model-free checks: the enumeration shortcut must not target a usage question as a declaration."""
 
 from __future__ import annotations
 

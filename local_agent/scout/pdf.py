@@ -1,4 +1,4 @@
-"""Annots PDF : Highlight / Text / FreeText / StrikeOut / Caret / Stamp. Pas d'OCR."""
+"""PDF Annots: Highlight / Text / FreeText / StrikeOut / Caret / Stamp. No OCR."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ _FLATE = (b"/FlateDecode", b"/Fl")
 
 
 def extract_annots(path: Path, *, want_page_text: bool = False) -> dict:
-    """Parse les objets Annot. Jamais un raster du PDF."""
+    """Parse Annot objects. Never a raster of the PDF."""
     try:
         raw = path.read_bytes()
     except OSError as error:

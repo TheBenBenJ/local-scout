@@ -1,7 +1,7 @@
-"""Archéologie de branche : quelles branches portent un motif, et leur statut de fusion.
+"""Branch archaeology: which branches carry a pattern, and their merge status.
 
-Ramassage seulement : `git log --grep`, `git branch --contains`, `git merge-base --is-ancestor`.
-Pas d'interprétation de « laquelle est la bonne » — l'orchestrateur tranche.
+Gathering only: `git log --grep`, `git branch --contains`, `git merge-base --is-ancestor`.
+No opinion on which one is right: the orchestrator decides.
 """
 
 from __future__ import annotations
@@ -54,8 +54,8 @@ def _main_branches(repo_root: Path) -> list[str]:
 
 
 def find_branches(pattern: str, repo_root: Path) -> dict:
-    """Branches dont le nom ou l'historique porte `pattern`, avec leur statut de fusion vers les
-    branches principales détectées (main/master/develop/dev/trunk, celles qui existent ici)."""
+    """Branches whose name or history carries `pattern`, with their merge status into the
+    detected main branches (main/master/develop/dev/trunk, whichever exist here)."""
     pattern = (pattern or "").strip()
     if not pattern:
         return {"pattern": pattern, "branches": [], "main_branches": [], "commit_matches": 0, "error": "motif vide"}

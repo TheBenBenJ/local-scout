@@ -1,4 +1,4 @@
-"""MCP scout : deux outils. L'orchestrateur n'enchaîne plus Jira / OCR / expand."""
+"""Scout MCP: two tools. The orchestrator no longer chains Jira / OCR / expand."""
 
 from __future__ import annotations
 

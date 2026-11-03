@@ -1,4 +1,4 @@
-"""Serveur MCP stdio sans dépendance, exposant le local-agent aux clients Claude Code et Cursor."""
+"""Dependency-free stdio MCP server exposing local-agent to Claude Code and Cursor clients."""
 
 from __future__ import annotations
 
@@ -355,7 +355,7 @@ def _log_usage(
     saved_chars: int = 0,
     compounded_chars: int = 0,
 ) -> None:
-    """Journal d'appels pour mesurer les économies réelles, jamais bloquant pour la réponse."""
+    """Call log used to measure real savings, never blocking the response."""
     try:
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -374,7 +374,7 @@ def _log_usage(
 
 
 def _bump_totals(saved_chars: int, compounded_chars: int = 0) -> dict:
-    """Cumul de vie du serveur, persistant : c'est la preuve chiffrée de ce que l'outil rapporte."""
+    """Persistent lifetime totals of the server: the figures that prove what the tool saves."""
     totals = {"calls": 0, "saved_chars": 0, "compounded_chars": 0}
     try:
         if USAGE_TOTALS.is_file():
@@ -393,7 +393,7 @@ def _bump_totals(saved_chars: int, compounded_chars: int = 0) -> dict:
 
 
 def _with_repo(config: Config, arguments: dict) -> Config:
-    """Un dépôt explicite prime sur la racine configurée, les clients MCP ne fournissant pas tous le workspace."""
+    """An explicit repository wins over the configured root, since not every MCP client provides the workspace."""
     override = str(arguments.get("repo") or "").strip()
     if not override or "${" in override:
         return config
@@ -444,7 +444,7 @@ def _trim(value: object, limit: int | None) -> object:
 
 
 def _select_fields(payload: dict, fields: object, max_chars: object) -> dict:
-    """Rendre un champ demandé plutôt que le payload entier : c'est là que part le contexte."""
+    """Return a requested field rather than the whole payload: that is where the context goes."""
     limit = int(max_chars) if isinstance(max_chars, (int, float)) and max_chars else None
     interieur = payload.get("payload")
     noms = [str(item) for item in (fields or []) if str(item).strip()]
@@ -464,7 +464,7 @@ def _select_fields(payload: dict, fields: object, max_chars: object) -> dict:
 
 
 def _handle_tool(name: str, arguments: dict, config: Config, client: MlxClient) -> ToolResult:
-    """Rend le texte de réponse et l'estimation de contexte épargné à l'orchestrateur."""
+    """Return the response text and the estimate of context spared to the orchestrator."""
     config = _with_repo(config, arguments)
     if name == "local_ping":
         try:
@@ -488,7 +488,7 @@ def _handle_tool(name: str, arguments: dict, config: Config, client: MlxClient) 
                 "metrics": store.Store().stats(),
             }
             return ToolResult(text=json.dumps(payload, ensure_ascii=False, indent=2))
-        # Un contrôle de vie n'a pas à coûter la configuration entière : full=true la rend.
+        # A liveness check need not cost the whole configuration: full=true returns it.
         capacites = (mlx.get("capabilities") or {}) if isinstance(mlx, dict) else {}
         payload = {
             "alive": bool(mlx.get("echo")) if isinstance(mlx, dict) else False,

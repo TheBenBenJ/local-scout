@@ -1,4 +1,4 @@
-"""Boucle agentique locale : le brut ne quitte pas la machine, Claude recoit le paquet."""
+"""Local agent loop: the raw material never leaves the machine, Claude receives the packet."""
 
 from __future__ import annotations
 
@@ -37,7 +37,7 @@ def infer_why(sources: list, task: str) -> str:
 
 
 def _stored_chars(payload: object) -> int:
-    """Taille du texte gardé en local, pour distinguer un paquet de sa source."""
+    """Size of the text kept locally, to tell a packet from its source."""
     if isinstance(payload, str):
         return len(payload)
     if isinstance(payload, dict):
@@ -48,7 +48,7 @@ def _stored_chars(payload: object) -> int:
 
 
 def _expand_hint(evidence: list[dict]) -> list[str]:
-    """Un paquet muet se lit comme une réponse complète : dire ce qui reste en local."""
+    """A silent packet reads like a complete answer: say what stays local."""
     ids = [str(item.get("id")) for item in evidence if item.get("more") and item.get("id")]
     if not ids:
         return []

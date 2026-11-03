@@ -15,13 +15,13 @@ from . import atlassian
 _TAG = re.compile(r"<[^>]+>", re.DOTALL)
 _MACRO = re.compile(r"<ac:structured-macro[^>]*?ac:name=\"([^\"]+)\"[^>]*>", re.DOTALL)
 _UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.IGNORECASE)
-# Garde-fou serveur seulement : une page de spec dépasse souvent 12 000 caractères.
+# Server-side guardrail only: a spec page often exceeds 12,000 characters.
 _MAX_BODY = 400_000
 
 
 def storage_text(raw: str) -> str:
-    # la balise de macro se remplace en entier : n'en consommer que le début laissait
-    # ses attributs (ac:schema-version, ac:local-id) dans le texte rendu
+    # the macro tag is replaced whole: consuming only its start left
+    # its attributes (ac:schema-version, ac:local-id) in the rendered text
     text = _MACRO.sub(r" [\1] ", raw or "")
     text = _TAG.sub(" ", text)
     text = html.unescape(text)
@@ -150,7 +150,7 @@ def fetch(page: str, repo_root: Path | None = None) -> dict:
 
 
 def search(query: str, repo_root: Path | None = None, *, limit: int = 3) -> dict:
-    """CQL borné : titre + pageId + 1 citation. Pas le HTML."""
+    """Bounded CQL: title + pageId + 1 quote. Not the HTML."""
     creds = atlassian.credentials(repo_root)
     needle = (query or "").replace('"', " ").strip()
     empty = {"configured": bool(creds["base"] and creds["token"]), "query": needle, "results": []}

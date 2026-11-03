@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OCR : garde-fous de chemin, regroupement, rapport sans modèle."""
+"""OCR: path guardrails, grouping, model-free report."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from local_agent.ocr import (  # noqa: E402
 from local_agent.evidence import parse_region_id  # noqa: E402
 from local_agent.store import expand as expand_evidence  # noqa: E402
 
-# PNG 1x1 : assez pour les garde-fous, pas pour un vrai OCR.
+# 1x1 PNG: enough for the guardrails, not for a real OCR.
 PNG_1X1 = bytes.fromhex(
     "89504e470d0a1a0a0000000d4948445200000001000000010802000000"
     "907753de0000000c4944415408d763f8cf0000020101e2d26d3f0000000049454e44ae426082"

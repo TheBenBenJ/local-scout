@@ -1,4 +1,4 @@
-"""Comptage des sources. raw_chars du dossier n'est pas le brut."""
+"""Source counters. The dossier's raw_chars is not the raw source text."""
 
 from __future__ import annotations
 

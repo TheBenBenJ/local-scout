@@ -1,4 +1,4 @@
-"""Tâches déléguées au modèle local : recherche, analyse, logs, contrôles."""
+"""Tasks delegated to the local model: search, analysis, logs, checks."""
 
 from __future__ import annotations
 
@@ -96,8 +96,8 @@ def _ask(
 ) -> dict:
     completion = client.complete(prompt, system, max_tokens=max_tokens, temperature=temperature)
     payload = prompts.extract_json(completion.text)
-    # Un résumé qui ressemble à du JSON signale une extraction échouée malgré les réparations : une
-    # relance coûte quelques secondes, un rapport illisible coûte l'appel entier.
+    # A summary that looks like JSON signals a failed extraction despite the repairs: a
+    # retry costs a few seconds, an unreadable report costs the whole call.
     if _looks_like_raw_json(str(payload.get("summary") or "")):
         retried = client.complete(
             prompt + "\n\nStrict reminder: a single valid, closed JSON object, with no surrounding text.",
@@ -127,10 +127,10 @@ _LOCATION_SHAPE = re.compile(r"^([\w./-]+)(.*)$")
 
 
 def _verify_paths(report: Report, known: set[str], config: Config) -> Report:
-    """Corrige ou signale les chemins recopiés par le modèle, qui se corrompent parfois en génération.
+    """Fix or flag the paths copied by the model, which sometimes get corrupted during generation.
 
-    Observé : `Supervion` pour `Supervision` dans un chemin par ailleurs juste. Le nom de fichier survit
-    mieux que le répertoire, donc un basename retrouvé dans les fichiers réellement lus fait foi.
+    Observed: `Supervion` for `Supervision` in an otherwise correct path. The file name survives
+    better than the directory, so a basename found among the files actually read is authoritative.
     """
     by_basename: dict[str, list[str]] = defaultdict(list)
     for relative in known:
@@ -161,8 +161,8 @@ def _verify_paths(report: Report, known: set[str], config: Config) -> Report:
     return report
 
 
-# Conclure à l'absence alors que des emplacements sont listés : observé sur « existe-t-il un
-# mécanisme de forçage ? », le résumé niait la saisie manuelle puis listait les NumberType posés.
+# Concluding absence while locations are listed: observed on « existe-t-il un mécanisme de
+# forçage ? » (is there a forcing mechanism?), the summary denied manual input, then listed the NumberType fields.
 _ABSENCE = re.compile(
     r"(?i)("
     r"\baucun(?:e|es)?\b"
@@ -202,10 +202,10 @@ def _reconcile_absence(report: Report) -> Report:
 
 
 def _flag_partial_sample(report: Report, omissions: list[str]) -> Report:
-    """Dit en clair que la réponse porte sur un échantillon.
+    """State plainly that the answer is based on a sample.
 
-    Le rapport chiffrait déjà l'écart dans ses statistiques, mais un compteur en fin de rapport se perd
-    au premier résumé : sur une question d'énumération, l'orchestrateur conclut alors à l'exhaustivité.
+    The report already quantified the gap in its statistics, but a counter at the end of a report is lost
+    in the first summary: on an enumeration question, the orchestrator then concludes it is exhaustive.
     """
     retenues = [item for item in omissions if item]
     if not retenues:
@@ -224,9 +224,9 @@ def _deaccent(word: str) -> str:
 
 
 def _fallback_patterns(query: str) -> list[str]:
-    """Repli purement lexical quand le modèle ne fournit pas de motifs exploitables.
+    """Purely lexical fallback when the model provides no usable patterns.
 
-    Les mots sont ancrés sur les limites de mot : sans cela, `faut` ramène chaque `défaut` du dépôt.
+    Words are anchored on word boundaries: otherwise `faut` matches every `défaut` in the repository.
     """
     words = re.findall(r"[A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_]{3,}", query)
     kept: list[str] = []
@@ -293,7 +293,7 @@ def _derive_patterns(client: MlxClient, query: str, flavor: str, avoid: list[str
         + f"Question : {query}\n\n"
         'Réponds uniquement par {"patterns": ["...", "..."]}'
     )
-    # Température nulle : un motif qui varie d'un appel à l'autre fait varier la réponse entière.
+    # Zero temperature: a pattern that varies from one call to the next makes the whole answer vary.
     try:
         completion = client.complete(prompt, prompts.SYSTEM_DERIVE, max_tokens=300, temperature=0.0)
     except MlxError:
@@ -325,11 +325,11 @@ def _stem(word: str) -> str:
 
 
 def _radicals(patterns: list[str]) -> list[str]:
-    """Radicaux des identifiants proposés par le modèle, qui invente des noms complets là où le code
-    conjugue autrement : `shouldDelegate` rate `is_worth_delegating`, son radical `delegat` le trouve."""
+    """Stems of the identifiers proposed by the model, which invents full names where the code
+    words them differently: `shouldDelegate` misses `is_worth_delegating`, its stem `delegat` finds it."""
     found: list[str] = []
     for pattern in patterns:
-        # Déplie les classes à deux casses avant découpe : sans cela `[Tt]imestamp` perd sa première lettre.
+        # Expand two-case classes before splitting: otherwise `[Tt]imestamp` loses its first letter.
         pattern = re.sub(r"\[([A-Za-z])[A-Za-z]?\]", r"\1", pattern)
         for part in re.findall(r"[A-Za-z]{4,}", pattern):
             for piece in re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])", part):
@@ -340,15 +340,15 @@ def _radicals(patterns: list[str]) -> list[str]:
 
 
 def _salient_terms(query: str) -> list[str]:
-    """Termes du domaine dans la question : une majuscule ou une capitalisation les signale presque toujours."""
+    """Domain terms in the question: an uppercase letter or a capitalization almost always marks them."""
     words = re.findall(r"[A-Za-z_][A-Za-z0-9_]{2,}", query)
     return [word for word in words if word[0].isupper() or word.isupper()]
 
 
-# « comment » et « pourquoi » demandent une explication, que des lignes brutes ne donnent pas.
+# « comment » (how) and « pourquoi » (why) ask for an explanation, which raw lines do not give.
 _ENUMERATION = re.compile(r"\b(quels?|quelles?|o[uù]|listez?|combien|which|where|list)\b", re.IGNORECASE)
 _EXPLANATION = re.compile(r"\b(comment|pourquoi|how|why)\b", re.IGNORECASE)
-# Verbes d'action : la question porte sur ce qu'un type FAIT, pas sur sa déclaration.
+# Action verbs: the question is about what a type DOES, not about its declaration.
 _USAGE_INTENT = re.compile(
     r"\b("
     r"écrit|ecrit|assigne|calcule|appelle|utilise|modifie|remplit|force|"
@@ -369,15 +369,15 @@ def _is_enumeration(query: str) -> bool:
 
 
 def _is_usage_query(query: str) -> bool:
-    """« Où PayrollService écrit les champs H+ » n'est pas une énumération de symboles."""
+    """« Où PayrollService écrit les champs H+ » (where PayrollService writes the H+ fields) is not a symbol enumeration."""
     return bool(_USAGE_INTENT.search(query))
 
 
 def _anchored_variants(term: str) -> list[str]:
-    """Motifs qui désignent l'usage ou la déclaration d'un symbole, pas ses simples mentions.
+    """Patterns that point at the use or the declaration of a symbol, not at its mere mentions.
 
-    Sur « quelles classes portent l'attribut Referencable », le terme nu ramène 168 lignes dont les
-    imports, quand `#\\[Referencable` ramène exactement les classes qui le portent.
+    On « quelles classes portent l'attribut Referencable » (which classes carry the Referencable attribute),
+    the bare term returns 168 lines including imports, while `#\\[Referencable` returns exactly the classes that carry it.
     """
     escaped = re.escape(term)
     return [
@@ -387,7 +387,7 @@ def _anchored_variants(term: str) -> list[str]:
     ]
 
 
-# Couvre les deux langages du poste : `def nom` en Python, `function nom` en PHP avec ses modificateurs.
+# Covers both languages of the workstation: `def name` in Python, `function name` in PHP with its modifiers.
 FUNCTION_DECLARATION = r"^\s*(?:def|(?:public\s+|private\s+|protected\s+|static\s+|final\s+|abstract\s+)*function)\s+\w+"
 
 STRUCTURAL_KEYWORDS = {
@@ -410,9 +410,9 @@ STRUCTURAL_KEYWORDS = {
 
 
 def _structural_patterns(query: str) -> list[str]:
-    """Une question nommant une construction PHP demande une déclaration, pas des mentions du mot.
+    """A question naming a PHP construct asks for a declaration, not for mentions of the word.
 
-    Le mot nu est trop courant pour servir de motif : `trait` matche chaque `use MonTrait;` du dépôt.
+    The bare word is too common to serve as a pattern: `trait` matches every `use MyTrait;` in the repository.
     """
     found = []
     for word in re.findall(r"[A-Za-zÀ-ÿ]+", query.lower()):
@@ -423,10 +423,10 @@ def _structural_patterns(query: str) -> list[str]:
 
 
 def _trim_to_capacity(counted: list[tuple[str, int]], capacity: int) -> list[str]:
-    """Écarte les motifs les plus larges quand ils noieraient les plus précis sous le plafond de grep.
+    """Drop the broadest patterns when they would drown the most precise ones under the grep cap.
 
-    Un motif structurel (toute déclaration de classe) peut ramener des milliers de lignes : additionné à
-    un motif précis, il consomme le plafond et dilue le signal que le motif précis portait.
+    A structural pattern (any class declaration) can return thousands of lines: added to a precise
+    pattern, it uses up the cap and dilutes the signal that the precise pattern carried.
     """
     kept: list[str] = []
     cumulative = 0
@@ -445,21 +445,21 @@ def _select_patterns(
     target: Path,
     globs: list[str] | None = None
 ) -> tuple[list[str], bool]:
-    """Retient les motifs du domaine, et ne descend aux mots de la question qu'à défaut.
+    """Keep the domain patterns, and only fall back to the words of the question when there are none.
 
-    Mélanger les deux noie le signal : sur « quelles classes portent l'attribut Referencable », le motif
-    précis donne 8 correspondances dans 4 fichiers, que le mot « attribut » à lui seul dilue dans 140.
+    Mixing both drowns the signal: on « quelles classes portent l'attribut Referencable », the precise
+    pattern gives 8 matches in 4 files, which the word « attribut » alone dilutes into 140.
 
-    Renvoie aussi la valeur sémantique des motifs : ceux du repli lexical ne traduisent pas la question,
-    ils en recopient les mots, et leurs correspondances ne doivent jamais être rendues comme une réponse.
+    Also return the semantic value of the patterns: those from the lexical fallback do not translate the
+    question, they copy its words, and their matches must never be returned as an answer.
     """
     salient = _salient_terms(query)
     usage = _is_usage_query(query)
 
-    # Énumération sur un symbole nommé : les lignes ancrées SONT la réponse, exhaustive et sans modèle.
-    # Mesuré : 9,6x moins cher qu'une synthèse pour la même réponse, en une seconde au lieu de neuf.
-    # Sauf question d'usage : « où PayrollService écrit les champs » ancré sur `class PayrollService` rate
-    # toutes les assignations. Le raccourci ne vaut que pour lister ou localiser le symbole lui-même.
+    # Enumeration on a named symbol: the anchored lines ARE the answer, exhaustive and model-free.
+    # Measured: 9.6x cheaper than a synthesis for the same answer, in one second instead of nine.
+    # Except for usage questions: « où PayrollService écrit les champs » anchored on `class PayrollService` misses
+    # every assignment. The shortcut only applies to listing or locating the symbol itself.
     if salient and _is_enumeration(query) and not usage:
         anchored = [
             (pattern, count)
@@ -470,9 +470,9 @@ def _select_patterns(
         if anchored and sum(count for _, count in anchored) <= budget.PASSTHROUGH_MATCHES:
             return [pattern for pattern, _ in anchored], True
 
-    # Hors raccourci, la dérivation reste systématique : un terme salient productif ne suffit pas
-    # toujours, le pivot pouvant être un nom commun que seul le modèle traduit en identifiant anglais
-    # (« connexions » vers connections). Mesuré : sauter la dérivation a coûté une réponse fausse sur dix.
+    # Outside the shortcut, derivation stays systematic: a productive salient term is not always
+    # enough, since the pivot may be a common noun that only the model turns into an English identifier
+    # (« connexions » into connections). Measured: skipping derivation cost one wrong answer in ten.
     structural = [] if usage else _structural_patterns(query)
     cheap = list(dict.fromkeys(salient + structural))
     counted_salient = [
@@ -490,12 +490,12 @@ def _select_patterns(
         if (count := count_matches(config, target, pattern, globs=globs))
     ]
 
-    # Moisson maigre : la dérivation varie d'un appel à l'autre et un tirage faible produit une réponse
-    # faible. Les radicaux des identifiants proposés, puis une seconde passe écartant les motifs
-    # stériles, récupèrent souvent le motif manquant.
+    # Thin harvest: derivation varies from one call to the next and a weak draw produces a weak
+    # answer. The stems of the proposed identifiers, then a second pass that drops barren
+    # patterns, often recover the missing pattern.
     if len(counted_derived) + len(counted_salient) < 2 or sum(c for _, c in counted_derived) < 10:
         seen = {pattern for pattern, _ in counted_derived}
-        # Un radical trop productif ne secourt rien : il noierait l'échantillon qu'il devait renforcer.
+        # An over-productive stem rescues nothing: it would drown the sample it was meant to strengthen.
         counted_derived += [
             (stem, count)
             for stem in _radicals(derived)
@@ -515,8 +515,8 @@ def _select_patterns(
         ]
 
     if counted_derived or counted_salient:
-        # Un motif structurel ne vient qu'en appoint de motifs porteurs de sens déjà productifs : seul ou
-        # adossé à des motifs quasi stériles, il ramène toutes les déclarations du dépôt et noie la question.
+        # A structural pattern only supplements meaningful patterns that are already productive: alone, or
+        # backed by nearly barren patterns, it returns every declaration in the repository and drowns the question.
         counted_structural = (
             [
                 (pattern, count)
@@ -534,7 +534,7 @@ def _select_patterns(
 
 
 def _snippet_context(config: Config, matches: list[dict], budget: int) -> str:
-    """Extrait de courtes fenêtres autour des correspondances les plus denses, sans lire tout le fichier."""
+    """Extract short windows around the densest matches, without reading the whole file."""
     by_file: dict[str, list[int]] = defaultdict(list)
     weight: dict[str, int] = {}
     for match in matches:
@@ -554,10 +554,10 @@ def _snippet_context(config: Config, matches: list[dict], budget: int) -> str:
             continue
         content = text.splitlines()
         windows: list[tuple[int, int]] = []
-        # Les lignes arrivent déjà réparties sur le fichier : les re-trier avant de tronquer ramènerait à l'en-tête.
+        # Lines already arrive spread over the file: re-sorting them before truncating would bring back the header.
         for line in sorted(dict.fromkeys(lines[:5])):
-            # Une déclaration mérite son corps : sans lui, le modèle ne peut pas dire ce que la
-            # classe ou le trait fournit, seulement qu'il existe.
+            # A declaration deserves its body: without it, the model cannot say what the
+            # class or trait provides, only that it exists.
             is_declaration = line <= len(content) and DECLARATION.search(content[line - 1])
             start = max(1, line - 12)
             end = min(len(content), line + (48 if is_declaration else 18))
@@ -593,9 +593,9 @@ def search(config: Config, client: MlxClient, query: str, path: str | None = Non
     shown = matches if len(matches) <= 120 else balanced_sample(matches, 120)
     match_lines = "\n".join(f"{m['file']}:{m['line']}: {m['text']}" for m in shown)
 
-    # Peu de correspondances : les lignes brutes répondent déjà, exhaustivement et sans risque d'omission.
-    # Réservé aux motifs sémantiques : celles du repli lexical recopient les mots de la question et
-    # produiraient un brut hors sujet rendu avec l'assurance d'une réponse.
+    # Few matches: the raw lines already answer, exhaustively and with no risk of omission.
+    # Reserved for semantic patterns: those from the lexical fallback copy the words of the question and
+    # would produce off-topic raw text delivered with the confidence of an answer.
     if semantic and total <= budget.PASSTHROUGH_MATCHES and not budget.is_worth_delegating(match_lines):
         return budget.passthrough(
             "Local search",
@@ -675,7 +675,7 @@ def analyze(
     chunk_set = build_chunks(config, files)
     chunks = chunk_set.parts
 
-    # Contenu plus court qu'une synthèse : le rendre tel quel et laisser l'orchestrateur juger.
+    # Content shorter than a synthesis: return it as is and let the orchestrator judge.
     joined = "\n".join(chunks)
     if not budget.is_worth_delegating(joined, budget.PASSTHROUGH_CONTENT_CHARS):
         return budget.passthrough(
@@ -900,7 +900,7 @@ def check(
         base.summary = f"Command exited with code {result.exit_code} and no usable output."
         return base
 
-    # Sortie déjà courte : la synthèse pèserait plus lourd que la sortie qu'elle résume.
+    # Output already short: the synthesis would weigh more than the output it summarizes.
     if not budget.is_worth_delegating(filtered):
         return budget.passthrough(
             base.title,
@@ -981,7 +981,7 @@ _MISSING_CLAIM = re.compile(
 
 
 def _calls_in_added_lines(diff: str) -> list[str]:
-    """Appels ajoutés dans le diff, hors méthodes trop génériques et hors définitions du même patch."""
+    """Calls added in the diff, excluding overly generic methods and definitions from the same patch."""
     defined = set(_DIFF_DEFINED.findall(diff))
     found: list[str] = []
     for name in _ADDED_CALL.findall(diff):
@@ -994,7 +994,7 @@ def _calls_in_added_lines(diff: str) -> list[str]:
 
 
 def _resolve_diff_symbols(config: Config, names: list[str]) -> dict[str, str]:
-    """Un appel dans le diff n'est pas une méthode nouvelle : on vérifie sa définition dans le dépôt."""
+    """A call in the diff is not a new method: its definition is looked up in the repository."""
     resolved: dict[str, str] = {}
     for name in names:
         pattern = rf"(?:function|def|fn)\s+{re.escape(name)}\s*\("
@@ -1013,7 +1013,7 @@ def _resolve_diff_symbols(config: Config, names: list[str]) -> dict[str, str]:
 
 
 def _downgrade_known_symbols(report: Report, resolved: dict[str, str]) -> Report:
-    """Observé : la revue signalait getTotalHeuresSup comme manquant, alors qu'il était à FichePaie.php:787."""
+    """Observed: the review flagged getTotalHeuresSup as missing, although it was at FichePaie.php:787."""
     if not resolved:
         return report
     kept: list[str] = []
@@ -1054,7 +1054,7 @@ def diff_review(
 
     sections = _split_diff_by_file(diff)
 
-    # Un diff court se lit tel quel : la revue par le modèle ne vaut que sur du volume.
+    # A short diff is read as is: a review by the model only pays off on volume.
     if not budget.is_worth_delegating(diff, budget.PASSTHROUGH_CONTENT_CHARS):
         return budget.passthrough(
             title,
@@ -1063,8 +1063,8 @@ def diff_review(
             stats={"files": len(sections)},
         )
 
-    # Les plus gros changements d'abord : si le budget de contexte force des omissions, elles
-    # portent sur les fichiers les moins modifiés.
+    # Largest changes first: if the context budget forces omissions, they
+    # fall on the least modified files.
     sections.sort(key=lambda item: len(item[1]), reverse=True)
     packed: list[str] = []
     used = 0

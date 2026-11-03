@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ancien nom. Toute la CLI est local-scout."""
+"""Former name. The whole CLI is now local-scout."""
 
 import os
 import sys

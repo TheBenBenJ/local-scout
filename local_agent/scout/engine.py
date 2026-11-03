@@ -1,4 +1,4 @@
-"""Point d'entrée scout : ramasse localement, écrit le dossier, optionnellement synthétise au 9B."""
+"""Scout entry point: gather locally, write the dossier, optionally synthesize with the 9B."""
 
 from __future__ import annotations
 
@@ -128,14 +128,14 @@ def _vision_capable(client: object) -> bool:
 
 
 def _needs_vision(mission: str, transcript: str) -> bool:
-    """OCR seul ne suffit pas : trou de layout (indice dans la mission) ou transcript trop maigre."""
+    """OCR alone is not enough: layout gap (hinted by the mission) or transcript too thin."""
     if vision_x.VISION_HINTS.search(mission or ""):
         return True
     return len((transcript or "").strip()) < VISION_WEAK_OCR_CHARS
 
 
 def _maybe_vision(config: Config, dossier: Dossier, client: MlxClient | None) -> None:
-    """Seconde passe vision sur les captures dont l'OCR seul ne suffit pas. Jamais le brut en dur."""
+    """Second vision pass on the screenshots whose OCR alone is not enough. Never the raw image inline."""
     if not dossier.images:
         return
     client = client or MlxClient(config)
@@ -157,7 +157,7 @@ def _maybe_vision(config: Config, dossier: Dossier, client: MlxClient | None) ->
             continue
         try:
             result = vision_x.reason(config, client, path, transcript, dossier.mission)
-        except Exception:  # noqa: BLE001 - une capture illisible ne doit pas casser le dossier
+        except Exception:  # noqa: BLE001 - an unreadable screenshot must not break the dossier
             continue
         if result.get("vision") != "applied":
             continue

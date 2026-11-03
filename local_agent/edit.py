@@ -1,4 +1,4 @@
-"""Modifications mécaniques appliquées par le modèle local, sous contrôle git."""
+"""Mechanical edits applied by the local model, under git control."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def _prune_patches() -> None:
 
 
 def _persist_bundle(config: Config, task: str, proposals: list[dict]) -> str:
-    """Fige la proposition sur disque : l'application n'écrira que ce contenu exact, vérifié par hash."""
+    """Freeze the proposal on disk: applying it will only write this exact content, checked by hash."""
     PATCH_DIR.mkdir(parents=True, exist_ok=True)
     _prune_patches()
     body = json.dumps(proposals, ensure_ascii=False, sort_keys=True)
@@ -58,7 +58,7 @@ def _persist_bundle(config: Config, task: str, proposals: list[dict]) -> str:
 
 
 def apply_patch(config: Config, patch_id: str) -> Report:
-    """Applique une proposition figée, en refusant toute source modifiée entre-temps."""
+    """Apply a frozen proposal, refusing any source modified in the meantime."""
     bundle_path = PATCH_DIR / f"{patch_id}.json"
     if not bundle_path.is_file():
         raise ValueError(f"unknown proposal: {patch_id}. Run a propose pass again.")
@@ -118,9 +118,9 @@ def apply_patch(config: Config, patch_id: str) -> Report:
 
 
 def _syntax_check(config: Config, path: Path) -> tuple[bool, str]:
-    """Contrôle syntaxique quand un vérificateur est disponible, sinon abstention explicite.
+    """Syntax check when a checker is available, otherwise an explicit abstention.
 
-    Un Docker éteint ne doit jamais faire passer une écriture valide pour une erreur de syntaxe.
+    A stopped Docker must never make a valid write look like a syntax error.
     """
     if path.suffix != ".php":
         return True, "non vérifié"
@@ -135,7 +135,7 @@ def _syntax_check(config: Config, path: Path) -> tuple[bool, str]:
 
 
 def _preview_diff(relative: str, original: str, candidate: str, max_lines: int = 60) -> str:
-    """Rend visible une proposition en dry-run, qu'aucun `git diff` ne peut montrer faute d'écriture."""
+    """Show a dry-run proposal, which no `git diff` can show since nothing was written."""
     lines = list(
         difflib.unified_diff(
             original.splitlines(),
@@ -192,8 +192,8 @@ def fix(
     allow_dirty: bool = False,
     mode: str = "propose",
 ) -> Report:
-    """Mode par défaut : propose. Rien n'est écrit tant que l'orchestrateur n'a pas relu le diff et
-    demandé l'application exacte de la proposition, identifiée et vérifiée par hash."""
+    """Default mode: propose. Nothing is written until the orchestrator has reviewed the diff and
+    asked for the exact proposal to be applied, identified and checked by hash."""
     if mode not in ("propose", "direct"):
         raise ValueError(f"unknown mode: {mode}. Available: propose, direct (apply goes through apply_patch).")
     propose = mode == "propose" or dry_run

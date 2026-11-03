@@ -1,4 +1,4 @@
-"""Extraction déterministe de clés depuis une mission ou un corps de ticket. Pas de LLM."""
+"""Deterministic key extraction from a mission or a ticket body. No LLM."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ CONFLUENCE_PAGE = re.compile(
 )
 CONFLUENCE_PAGES = re.compile(r"/pages/(\d{6,})", re.IGNORECASE)
 IMAGE_NAME = re.compile(r"\b(image-\d{8}-\d{6}\.(?:png|jpg|jpeg|webp))\b", re.IGNORECASE)
-# Ne pas ancrer sur \b avant src/ : ça réécrit lib/bundle/src/Foo.php en src/Foo.php.
+# Do not anchor on \b before src/: that rewrites lib/bundle/src/Foo.php into src/Foo.php.
 REPO_FILE = re.compile(
     r"(?<![A-Za-z0-9_.-])"
     r"((?:lib|src|tests|assets|config|app)(?:/[A-Za-z0-9_.-]+)+\.(?:php|ts|twig|yml|yaml|xml))"
@@ -58,7 +58,7 @@ _EXTRACTION = re.compile(
     r"^\W*(?:ACME-\d+\s*:?\s*)?(?:extraire|recenser|lister|relever|lire|récupérer|recuperer|contexte de)\b",
     re.IGNORECASE,
 )
-# « écran » seul décrit souvent ce que montre une capture : seul un mot de code exige le contrôleur.
+# "écran" (screen) alone often describes what a screenshot shows: only a code word requires the controller.
 _SCREEN_NEED = re.compile(
     r"\b(contrôleur|controleur|controller|render|template|twig|code de l['’]écran|code de l['’]ecran)\b",
     re.IGNORECASE,
@@ -146,7 +146,7 @@ def image_names(text: str, *, limit: int = 8) -> list[str]:
 
 
 def prefer_full_paths(items: list[str]) -> list[str]:
-    """Garde lib/bundle/src/Foo.php et écarte le suffixe src/Foo.php."""
+    """Keep lib/bundle/src/Foo.php and drop the src/Foo.php suffix."""
     found = [item.strip() for item in items if str(item or "").strip()]
     kept: list[str] = []
     for item in found:
@@ -158,7 +158,7 @@ def prefer_full_paths(items: list[str]) -> list[str]:
 
 
 def as_repo_path(uri: str) -> str | None:
-    """Recopie un chemin repo-relative tel quel. Jamais de réécriture src/ depuis lib/…/src/."""
+    """Copy a repo-relative path as is. Never rewrite src/ from lib/…/src/."""
     raw = str(uri or "").strip()
     if not raw:
         return None
@@ -225,7 +225,7 @@ def wants_jira_search(text: str) -> bool:
 
 
 def is_extraction(text: str) -> bool:
-    """Mission de ramassage pur (« Extraire… », « Recenser… ») : pas d'écran ni de page exigés."""
+    """Pure gathering mission (« Extraire… », « Recenser… »): no screen or page required."""
     return bool(_EXTRACTION.search(text or ""))
 
 
@@ -278,9 +278,9 @@ def build_jql(mission: str, *, exclude: list[str] | None = None) -> str:
 
 
 def confluence_query(mission: str, ticket_text: str = "", goal: str = "") -> str:
-    """Le titre du ticket décrit le domaine ; la mission décrit la consigne."""
+    """The ticket title describes the domain; the mission describes the instruction."""
     words = jql_terms(goal, limit=12)
-    # Agence, nom de personne : en capitales dans les titres, sans valeur pour une recherche de domaine.
+    # Agency, person name: in capitals in titles, worthless for a domain search.
     plain = [word for word in words if not word.isupper()]
     terms = (plain if len(plain) >= 2 else words)[:4]
     if len(terms) < 2:
@@ -327,7 +327,7 @@ def is_pdf_path(relative: str) -> bool:
 
 
 def ticket_focus(text: str, *, limit: int = 2200) -> tuple[str, bool]:
-    """User story + décisions + AC. Pas le ticket entier."""
+    """User story + decisions + AC. Not the whole ticket."""
     raw = (text or "").strip()
     if not raw:
         return "", False

@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Sonde de bout en bout du serveur MCP local-agent.
+"""End-to-end probe of the local-agent MCP server.
 
-Lance le serveur en stdio, joue une poignée d'appels et vérifie que chaque réponse reste compacte.
+Starts the server over stdio, plays a handful of calls and checks that every response stays compact.
 
-Les appels vivent dans `cases.json`, sous la clé `sonde`, et visent ce dépôt même par défaut. Pour
-sonder un dépôt de travail avec ses propres chemins, copier ce fichier en `cases.local.json` (ignoré
-par git) et passer `--cases`.
+The calls live in `cases.json`, under the `sonde` key, and target this very repository by default. To
+probe a work repository with its own paths, copy that file to `cases.local.json` (ignored by git) and
+pass `--cases`.
 
     python3 ~/.local-scout/tests/mcp_probe.py
     python3 ~/.local-scout/tests/mcp_probe.py --quick
-    python3 ~/.local-scout/tests/mcp_probe.py --repo /chemin/vers/le/depot
+    python3 ~/.local-scout/tests/mcp_probe.py --repo /path/to/the/repo
 """
 
 from __future__ import annotations

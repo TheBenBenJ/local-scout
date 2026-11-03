@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gateway, store, risk, agent loop, image compare. Pas de serveur LLM requis."""
+"""Gateway, store, risk, agent loop, image compare. No LLM server required."""
 
 from __future__ import annotations
 

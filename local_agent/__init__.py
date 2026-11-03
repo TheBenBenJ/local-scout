@@ -1,4 +1,4 @@
-"""local-scout : déblayage local (Jira, OCR, rg, LLM 9B) avant le diagnostic."""
+"""local-scout: local groundwork (Jira, OCR, rg, 9B LLM) before the diagnosis."""
 
 __all__ = [
     "agent",

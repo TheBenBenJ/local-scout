@@ -1,4 +1,4 @@
-"""Harnais de mesure scout. Colonnes séparées : 9B, dossier, PNG, Cursor (vide)."""
+"""Scout measurement harness. Separate columns: 9B, dossier, PNG, Cursor (empty)."""
 
 from __future__ import annotations
 

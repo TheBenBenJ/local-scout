@@ -1,4 +1,4 @@
-"""Interface en ligne de commande du local-agent."""
+"""Command-line interface of local-agent."""
 
 from __future__ import annotations
 

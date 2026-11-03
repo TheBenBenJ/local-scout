@@ -1,4 +1,4 @@
-"""Second passe image : le modèle chargé s'il a la vision, jamais un second checkpoint."""
+"""Second image pass: the loaded model if it has vision, never a second checkpoint."""
 
 from __future__ import annotations
 

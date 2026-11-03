@@ -1,4 +1,4 @@
-"""Client HTTP pour un serveur mlx-serve exposant une API compatible OpenAI."""
+"""HTTP client for an mlx-serve server exposing an OpenAI-compatible API."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def _strip_reasoning(text: str) -> str:
 
 
 def image_part(path: Path) -> dict:
-    """Chemin fichier, jamais du base64 : Qwen3.x / mlx-vlm boucle ou ignore les data-URI."""
+    """A file path, never base64: Qwen3.x / mlx-vlm loops on or ignores data URIs."""
     return {"type": "image_url", "image_url": {"url": str(Path(path).resolve())}}
 
 

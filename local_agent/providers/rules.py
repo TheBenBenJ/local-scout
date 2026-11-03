@@ -1,4 +1,4 @@
-"""Index lossless des regles projet : selection par le LLM local, texte ORIGINAL renvoye."""
+"""Lossless index of project rules: selection by the local LLM, ORIGINAL text returned."""
 
 from __future__ import annotations
 

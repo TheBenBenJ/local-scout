@@ -29,7 +29,7 @@ def _adf_text(node: object) -> str:
     return text
 
 _MAX_TEXT = 12000
-# Tous gardés en local : le dossier en affiche peu, le fichier ticket sur disque les porte tous.
+# All kept locally: the dossier shows few of them, the ticket file on disk holds them all.
 _MAX_COMMENTS = 200
 
 
@@ -83,7 +83,7 @@ def _empty_field_names(fields: dict, names: dict) -> list[str]:
 
 
 def _option_fields(fields: dict, names: dict) -> list[dict]:
-    """Champs à liste de choix : valeur courte, utile seulement si la mission nomme le champ."""
+    """Choice-list fields: a short value, only useful when the mission names the field."""
     packed = []
     for field_id in sorted(fields):
         value = fields.get(field_id)
@@ -97,7 +97,7 @@ def _option_fields(fields: dict, names: dict) -> list[dict]:
 
 
 def _custom_fields(fields: dict, names: dict, *, limit: int = 8) -> list[dict]:
-    """Champs personnalisés rédigés (texte ou ADF). Les ids techniques et valeurs courtes sont du bruit."""
+    """Free-text custom fields (text or ADF). Technical ids and short values are noise."""
     packed = []
     for field_id in sorted(fields):
         if not field_id.startswith("customfield_"):
@@ -131,7 +131,7 @@ def fetch(key: str, repo_root: Path | None = None, *, attachments: bool = True) 
             ),
             "key": key,
         }
-    # *all + names : les champs personnalisés (analyses, attendu…) portent le diagnostic métier.
+    # *all + names: custom fields (analyses, expected result…) carry the business diagnosis.
     url = f"{creds['base']}/rest/api/3/issue/{key}?fields=*all&expand=names"
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     atlassian.authorize(request, creds)
@@ -189,7 +189,7 @@ def fetch(key: str, repo_root: Path | None = None, *, attachments: bool = True) 
 
 
 def search(jql: str, repo_root: Path | None = None, *, limit: int = 5) -> dict:
-    """JQL borné. Ne dump pas les issues : key, summary, status, type, 5 lignes."""
+    """Bounded JQL. Does not dump the issues: key, summary, status, type, 5 lines."""
     query = (jql or "").strip()
     creds = atlassian.credentials(repo_root)
     empty = {"configured": bool(creds["base"] and creds["token"]), "jql": query, "total": 0, "results": []}
@@ -260,7 +260,7 @@ _IMAGE_SUFFIX = (".png", ".jpg", ".jpeg", ".webp", ".gif")
 
 
 def save_images(packed: dict, dest: Path, repo_root: Path | None = None, *, limit: int = 8) -> list[Path]:
-    """Écrit les PNG déjà décrits par fetch(). Pas de second GET ticket."""
+    """Write the PNGs already described by fetch(). No second ticket GET."""
     if packed.get("error"):
         return []
     creds = atlassian.credentials(repo_root)
@@ -290,5 +290,5 @@ def save_images(packed: dict, dest: Path, repo_root: Path | None = None, *, limi
 
 
 def download_images(key: str, dest: Path, repo_root: Path | None = None, *, limit: int = 8) -> list[Path]:
-    """Télécharge les pièces image d'un ticket. Chemins absolus pour l'OCR."""
+    """Download the image attachments of a ticket. Absolute paths for the OCR."""
     return save_images(fetch(key, repo_root), dest, repo_root, limit=limit)

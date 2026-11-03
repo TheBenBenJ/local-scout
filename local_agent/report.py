@@ -1,4 +1,4 @@
-"""Format de retour compact et structuré, unique surface exposée à l'orchestrateur."""
+"""Compact, structured return format: the only surface exposed to the orchestrator."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ class Report:
 
 
 def _cle(texte: object) -> str:
-    """Forme comparable d'une ligne : sans identifiant de tête, sans casse, sans espaces doubles."""
+    """Comparable form of a line: no leading identifier, no case, no double spaces."""
     brut = re.sub(r"^[-*+]\s+|^#{1,6}\s+", "", str(texte or "").strip())
     brut = re.sub(r"^[A-Z]+-E\d+\s*:\s*", "", brut)
     return re.sub(r"\s+", " ", brut).strip().lower()[:160]
@@ -85,7 +85,7 @@ def _evidence_section(items: list[dict], limit: int = 15, vus: set[str] | None =
         content = str(item.get("content") or "").replace("\n", " ").strip()
         suffix = f", {conf}" if isinstance(conf, (int, float)) else ""
         cle = _cle(content)
-        # L'identifiant reste adressable même quand son extrait est déjà plus haut.
+        # The identifier stays addressable even when its excerpt already appears above.
         if vus is not None and cle and cle in vus:
             lines.append(f"- `{identifier}` ({kind}{suffix})")
             continue

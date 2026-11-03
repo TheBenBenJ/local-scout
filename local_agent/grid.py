@@ -1,4 +1,4 @@
-"""Reconstruction d'une grille (lignes x colonnes) a partir des boites OCR, sans modele."""
+"""Rebuild a grid (rows x columns) from OCR boxes, without a model."""
 
 from __future__ import annotations
 
@@ -38,13 +38,13 @@ def clean_cell(text: str) -> str:
 
 
 def is_column_letter(item: dict) -> bool:
-    """Lettres A-Z au-dessus d'une feuille Excel, trop etroites pour etre une cellule."""
+    """A-Z letters above an Excel sheet, too narrow to be a cell."""
     text = str(item.get("text") or "").strip()
     return len(text) == 1 and text.isalpha() and _num(item, "width") < 0.025
 
 
 def cluster_1d(values: list[float], gap: float) -> list[list[int]]:
-    """Regroupe des positions triees. Rend des listes d'indices dans l'ordre d'origine."""
+    """Group sorted positions. Return lists of indices in their original order."""
     if not values:
         return []
     indexed = sorted(range(len(values)), key=lambda i: values[i])

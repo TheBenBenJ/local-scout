@@ -1,7 +1,7 @@
-"""Cas terrain ACME-6160 / 6417 / 6553 : prompts de chat et grille d'évaluation.
+"""Field cases ACME-6160 / 6417 / 6553: chat prompts and scoring grid.
 
-Le score porte sur le dossier scout, pas sur les cartes Cursor.
-Mode fixture = tests. Mode live = dépôt client + Jira réel.
+The score is about the scout dossier, not the Cursor usage cards.
+Fixture mode = tests. Live mode = client repository + real Jira.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Dossier borné : le seul texte destiné à l'orchestrateur."""
+"""Bounded dossier: the only text meant for the orchestrator."""
 
 from __future__ import annotations
 
@@ -238,7 +238,7 @@ class Dossier:
                 _Section("locations", "## Locations", [f"- {item}" for item in self.locations], 300, 60, 2)
             )
         text = _pack(_header(self), sections, _tail(self), cap)
-        # Le budget peut encore écarter des captures affichables : les nommer plutôt que les taire.
+        # The budget may still leave out displayable screenshots: name them rather than hide them.
         dropped = [item for item in self.images[:IMAGES_SHOWN] if f"### {item.get('name')}" not in text]
         if dropped and not _second_pass:
             for item in dropped:
@@ -377,7 +377,7 @@ TICKET_COMMENT_CHARS = 700
 
 
 def _ticket_block(item: dict, typed: list[dict] | None = None) -> tuple[str, list[str]]:
-    """Rend le ticket et la liste de ce qui a été coupé (vide = rien à relire)."""
+    """Return the ticket and the list of what was cut (empty = nothing to re-read)."""
     key = item.get("key") or "?"
     goal = item.get("goal") or ""
     status = item.get("status") or ""
@@ -502,7 +502,7 @@ PAGE_MAX = 3
 
 
 def _page_block(item: dict, *, limit: int = PAGE_BODY_CHARS) -> tuple[str, bool]:
-    """Page chargée : corps dans le budget. Résultat de recherche : citation courte (candidat)."""
+    """Loaded page: body within budget. Search result: short quote (candidate)."""
     title = item.get("title") or item.get("page") or "?"
     page_id = item.get("id") or item.get("page") or ""
     header = f"### {title}"
@@ -544,7 +544,7 @@ OCR_IMAGE_LINES = 30
 
 
 def _ocr_text(transcript: str, *, limit: int = OCR_IMAGE_CHARS) -> tuple[str, bool]:
-    """Transcript dans l'ordre de lecture, cellules vides retirées. Aucun tri par mots-clés."""
+    """Transcript in reading order, empty cells removed. No keyword sorting."""
     kept: list[str] = []
     for raw in (transcript or "").splitlines():
         line = raw.strip()

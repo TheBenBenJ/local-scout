@@ -1,4 +1,4 @@
-"""Chargement déterministe : sources fermées, Annot PDF, Jira opt-in, OCR borné."""
+"""Deterministic loading: closed sources, PDF Annots, opt-in Jira, bounded OCR."""
 
 from __future__ import annotations
 
@@ -63,7 +63,7 @@ def gather(
             )
         elif lowered.startswith("confluence://"):
             found = extract.confluence_ids(uri)
-            # confluence://ESPACE/Titre : le provider sait chercher par titre, ne pas l'ignorer.
+            # confluence://SPACE/Title: the provider can search by title, do not ignore it.
             ident = uri.split("://", 1)[-1].strip()
             page_ids = extract.merge(page_ids, found or ([ident] if ident else []), limit=3)
         elif lowered.startswith("image://") or Path(uri).suffix.lower() in _IMAGE_SUFFIX:
@@ -420,7 +420,7 @@ def _load_pdf(config: Config, dossier: Dossier, relative: str, path: Path, missi
 
 
 def _write_page(config: Config, packed: dict, directory: Path) -> str:
-    """Page intégrale en texte sur disque : citer mot pour mot sans rappeler Confluence."""
+    """Full page as text on disk: quote it verbatim without calling Confluence again."""
     body = str(packed.get("body") or packed.get("text") or "")
     if not body.strip():
         return ""
@@ -435,7 +435,7 @@ def _write_page(config: Config, packed: dict, directory: Path) -> str:
 
 
 def _ticket_people_and_links(raw) -> list[str]:
-    """Dates, personnes, versions et liens : sans eux, le lecteur fouille le JSON brut du ticket."""
+    """Dates, people, versions and links: without them, the reader digs through the raw JSON of the ticket."""
     fields = (raw or {}).get("fields") if isinstance(raw, dict) else None
     if not isinstance(fields, dict):
         return []
@@ -465,7 +465,7 @@ def _ticket_people_and_links(raw) -> list[str]:
 
 
 def _write_ticket(config: Config, packed: dict, directory: Path) -> str:
-    """Ticket intégral en texte sur disque : le drill-down lit ce fichier, pas un second appel Jira."""
+    """Full ticket as text on disk: the drill-down reads this file, not a second Jira call."""
     lines = [
         f"# {packed.get('key')} — {packed.get('goal')}",
         f"Type : {packed.get('issuetype')} · Statut : {packed.get('status')} · Priorité : {packed.get('priority') or '?'}",
@@ -485,7 +485,7 @@ def _write_ticket(config: Config, packed: dict, directory: Path) -> str:
         target = directory / f"{packed.get('key')}.md"
         target.write_text("\n".join(lines) + "\n", encoding="utf-8")
         if packed.get("raw") is not None:
-            # Réponse API telle quelle : les skills qui veulent un contexte.json n'ont pas à rappeler Jira.
+            # API response as is: skills that want a contexte.json do not have to call Jira again.
             (directory / f"{packed.get('key')}.json").write_text(
                 json.dumps(packed["raw"], ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
             )
@@ -617,7 +617,7 @@ def _finalize_coverage(
 
     typed_ok = True
     if diagnosis:
-        # Une mission « Extraire… » ne demande ni écran ni page de domaine : ne pas les exiger.
+        # An « Extraire… » mission asks for neither a screen nor a domain page: do not require them.
         need_page = not extraction or extract.wants_confluence(mission)
         need_screen = not extraction or extract.wants_screen(mission)
         page_ok = bool(dossier.pages) or not need_page

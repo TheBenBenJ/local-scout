@@ -1,4 +1,4 @@
-"""Extraits rg : chemins fidèles, fenêtres autour des symboles, pas le début de classe."""
+"""rg excerpts: faithful paths, windows around symbols, not the start of the class."""
 
 from __future__ import annotations
 
@@ -426,7 +426,7 @@ def screen_pass(
 
 
 def _render_matches(config: Config, relative: str, *, limit: int = 3) -> list[dict]:
-    """Un contrôleur trouvé par un motif du ticket : ses render() disent quel écran il sert."""
+    """A controller found by a ticket pattern: its render() calls tell which screen it serves."""
     try:
         lines = (config.repo_root / relative).read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:

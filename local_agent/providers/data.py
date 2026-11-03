@@ -1,4 +1,4 @@
-"""Analyse deterministe de csv/json/sqlite. Pas de DuckDB : stdlib uniquement."""
+"""Deterministic analysis of csv/json/sqlite. No DuckDB: stdlib only."""
 
 from __future__ import annotations
 

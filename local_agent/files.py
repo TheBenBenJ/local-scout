@@ -1,4 +1,4 @@
-"""Découverte de fichiers, garde-fous et découpage en lots pour le modèle local."""
+"""File discovery, guardrails and batching for the local model."""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ class SelectedFile:
 
 
 def ensure_usable_root(config: Config) -> None:
-    """Refuse de travailler hors d'un dépôt git, pour ne jamais parcourir un répertoire personnel entier."""
+    """Refuse to work outside a git repository, so that a whole home directory is never crawled."""
     root = config.repo_root
     if root == Path.home():
         raise GuardrailError(
@@ -95,7 +95,7 @@ def resolve_path(config: Config, raw: str | None) -> Path:
         raise GuardrailError(f"chemin hors du dépôt refusé : {resolved}") from error
     if not resolved.exists():
         raise GuardrailError(f"chemin inexistant : {resolved}")
-    # Un fichier sensible désigné explicitement doit être refusé, pas silencieusement ignoré.
+    # A sensitive file named explicitly must be refused, not silently skipped.
     if resolved.is_file() and any(fnmatch.fnmatch(resolved.name, pattern) for pattern in DENIED_PATTERNS):
         raise GuardrailError(f"fichier sensible ou non pertinent refusé : {relative_to_root(config, resolved)}")
     return resolved
@@ -111,7 +111,7 @@ def relative_to_root(config: Config, path: Path) -> str:
 
 
 def unlocked_directories(config: Config, target: Path) -> frozenset[str]:
-    """Un répertoire normalement exclu redevient lisible quand la cible le désigne explicitement."""
+    """A normally excluded directory becomes readable again when the target names it explicitly."""
     relative = relative_to_root(config, target)
     return frozenset(part for part in Path(relative).parts if part in DENIED_DIRECTORIES)
 
@@ -147,10 +147,10 @@ def is_denied(
 
 
 def _run_ripgrep(args: list[str], cwd: Path, timeout: int = 60, max_bytes: int = 8_000_000) -> list[str]:
-    """Exécute ripgrep en bornant la sortie lue, pour ne jamais charger un log entier en mémoire.
+    """Run ripgrep with a bounded read of its output, so that a whole log is never loaded in memory.
 
-    stdin est neutralisé : hérité, ripgrep le prendrait pour sa source à fouiller et consommerait
-    le flux JSON-RPC du serveur MCP.
+    stdin is neutralized: if inherited, ripgrep would take it as the source to search and consume
+    the MCP server's JSON-RPC stream.
     """
     process = subprocess.Popen(
         ["rg", *args],
@@ -179,7 +179,7 @@ def discover_files(
     max_files: int | None = None,
     allow_sensitive: bool = False,
 ) -> tuple[list[SelectedFile], int]:
-    """Liste les fichiers candidats via ripgrep, qui respecte déjà .gitignore."""
+    """List candidate files through ripgrep, which already honours .gitignore."""
     limit = max_files or config.max_files
     unlocked = unlocked_directories(config, target)
     if target.is_file():
@@ -226,7 +226,7 @@ def grep(
     max_count_per_file: int | None = None,
     balance_by_file: bool = False,
 ) -> tuple[list[dict], int]:
-    """Recherche textuelle native, retournée sous forme de correspondances structurées."""
+    """Native text search, returned as structured matches."""
     limit = max_matches or config.max_matches
     unlocked = unlocked_directories(config, target)
     args = [
@@ -272,7 +272,7 @@ def grep(
         matches.append({"file": relative, "line": int(line_no), "text": text.strip()[:200]})
 
     total = len(matches)
-    # Comptage avant troncature : c'est le volume réel par fichier qui hiérarchise la pertinence.
+    # Count before truncating: the real volume per file is what ranks relevance.
     per_file = Counter(match["file"] for match in matches)
     declaring = {match["file"] for match in matches if DECLARATION.match(match["text"])}
     for match in matches:
@@ -291,20 +291,20 @@ BOILERPLATE_PREFIXES = ("use ", "namespace ", "//", "/*", "*", "import ", "requi
 DECLARATION = re.compile(
     r"^\s*(?:final\s+|abstract\s+|readonly\s+)*(?:trait|class|interface|enum|function|const)\s",
 )
-# Une définition vaut plus que la densité : un fichier bavard écraserait sinon la ligne décisive.
+# A definition is worth more than density: otherwise a verbose file would drown the decisive line.
 DECLARATION_BONUS = 500
 
 
 def _drop_boilerplate(entries: list[dict]) -> list[dict]:
-    """Écarte imports et commentaires, qui saturent le début des fichiers sans jamais porter la réponse."""
+    """Skip imports and comments, which crowd the top of files without ever holding the answer."""
     useful = [entry for entry in entries if not entry["text"].lstrip().startswith(BOILERPLATE_PREFIXES)]
     return useful or entries
 
 
 def _spread(entries: list[dict]) -> list[dict]:
-    """Ordonne par dichotomie, pour qu'un préfixe de la liste couvre déjà tout le fichier.
+    """Order by bisection, so that any prefix of the list already covers the whole file.
 
-    Pris dans l'ordre des lignes, un échantillon partiel ne montre que l'en-tête du fichier.
+    Taken in line order, a partial sample only shows the file header.
     """
     order: list[dict] = []
     queue: deque[tuple[int, int]] = deque([(0, len(entries) - 1)])
@@ -320,7 +320,7 @@ def _spread(entries: list[dict]) -> list[dict]:
 
 
 def count_matches(config: Config, target: Path, pattern: str, *, globs: list[str] | None = None) -> int:
-    """Compte les correspondances d'un motif seul, pour jauger sa sélectivité avant de l'employer."""
+    """Count the matches of a single pattern, to gauge its selectivity before using it."""
     unlocked = unlocked_directories(config, target)
     args = ["--count-matches", "--no-filename", "--no-messages", "--ignore-case"]
     if is_git_ignored(config, target):
@@ -346,11 +346,11 @@ def count_matches(config: Config, target: Path, pattern: str, *, globs: list[str
 
 
 def balanced_sample(matches: list[dict], limit: int, max_files: int | None = None) -> list[dict]:
-    """Répartit l'échantillon sur les fichiers les plus denses.
+    """Spread the sample over the densest files.
 
-    Deux écueils à éviter ensemble : une troncature dans l'ordre de parcours du disque masque des
-    répertoires entiers, mais une répartition sur tous les fichiers touchés ne laisse qu'une ligne
-    par fichier et prive le modèle du contexte qui porte la réponse.
+    Two pitfalls to avoid together: truncating in disk traversal order hides whole directories,
+    but spreading over every matching file leaves a single line per file and deprives the model
+    of the context that holds the answer.
     """
     grouped: dict[str, list[dict]] = {}
     for match in matches:
@@ -405,7 +405,7 @@ def render_file(config: Config, item: SelectedFile, *, numbered: bool = True) ->
 
 @dataclass
 class ChunkSet:
-    """Les lots, et ce qu'il a fallu laisser dehors pour tenir dans les bornes."""
+    """The batches, and what had to be left out to stay within bounds."""
 
     parts: list[str]
     files_included: int
@@ -413,7 +413,7 @@ class ChunkSet:
 
 
 def build_chunks(config: Config, files: list[SelectedFile], *, numbered: bool = True) -> ChunkSet:
-    """Assemble les fichiers en lots bornés, sans jamais tout envoyer d'un coup."""
+    """Assemble files into bounded batches, never sending everything at once."""
     chunks: list[str] = []
     current: list[str] = []
     current_size = 0

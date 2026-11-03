@@ -1,4 +1,4 @@
-"""Consignes envoyées au modèle local et extraction de ses réponses structurées."""
+"""Instructions sent to the local model, and extraction of its structured answers."""
 
 from __future__ import annotations
 
@@ -116,7 +116,7 @@ JSON_ESCAPES = frozenset('"\\/bfnrtu')
 
 
 def _escape_stray_backslashes(text: str) -> str:
-    """Échappe les antislashs isolés, que les FQCN PHP (App\\Workflow\\X) rendent fréquents."""
+    """Escape lone backslashes, which PHP FQCNs (App\\Workflow\\X) make frequent."""
     pieces: list[str] = []
     index = 0
     length = len(text)
@@ -153,7 +153,7 @@ def _candidates(text: str) -> list[str]:
 
 
 def extract_json(text: str) -> dict:
-    """Récupère l'objet JSON d'une réponse, malgré le bruit, les balises markdown et les troncatures."""
+    """Recover the JSON object of an answer despite noise, markdown fences and truncation."""
     payload = extract_raw(text)
     if payload:
         return normalize(payload)
@@ -164,7 +164,7 @@ def extract_json(text: str) -> dict:
 
 
 def extract_raw(text: str) -> dict:
-    """Objet JSON tel quel, sans le réduire aux clés d'un rapport d'analyse."""
+    """JSON object as is, without reducing it to the keys of an analysis report."""
     for candidate in _candidates(text):
         try:
             payload = json.loads(candidate)
@@ -176,7 +176,7 @@ def extract_raw(text: str) -> dict:
 
 
 def extract_list(text: str, key: str) -> list[str]:
-    """Récupère une liste de chaînes d'une réponse JSON, même tronquée par la limite de tokens."""
+    """Recover a list of strings from a JSON answer, even when cut by the token limit."""
     for candidate in _candidates(text):
         try:
             payload = json.loads(candidate)
@@ -198,10 +198,10 @@ def _decode(raw: str) -> str:
 
 
 def _rescue_fields(text: str) -> dict | None:
-    """Repêche les champs un à un quand l'objet est cassé en son milieu, et pas seulement coupé à la fin.
+    """Salvage fields one by one when the object is broken in the middle, not just cut at the end.
 
-    Le modèle ouvre parfois une clé sans fermer la liste précédente : refermer la fin ne répare rien, et
-    sans ce repêchage le rapport présenterait le JSON brut en guise de résumé.
+    The model sometimes opens a key without closing the previous list: closing the end repairs nothing,
+    and without this salvage the report would show raw JSON as its summary.
     """
     found = re.search(r'"summary"\s*:\s*' + _JSON_STRING, text, re.S)
     if not found:
@@ -216,7 +216,7 @@ def _rescue_fields(text: str) -> dict | None:
 
 
 def _salvage_truncated(text: str) -> str | None:
-    """Referme un objet JSON coupé par la limite de tokens, en abandonnant l'entrée incomplète."""
+    """Close a JSON object cut by the token limit, dropping the incomplete entry."""
     start = text.find("{")
     if start < 0:
         return None

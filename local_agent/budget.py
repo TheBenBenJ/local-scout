@@ -1,22 +1,22 @@
-"""Arbitrage de frugalité : ne déléguer que ce que la délégation allège réellement.
+"""Frugality trade-off: only delegate what delegation actually lightens.
 
-Une synthèse produite par le modèle pèse en pratique entre 1 500 et 2 600 caractères. En dessous de ce
-seuil, la preuve brute est à la fois moins coûteuse pour l'orchestrateur et exacte, là où la synthèse
-introduit un risque d'omission. Mesures à l'appui dans `tests/bench.py` et `tests/bench_exactitude.py`.
+A synthesis produced by the model weighs 1,500 to 2,600 characters in practice. Below that
+threshold, the raw evidence is both cheaper for the orchestrator and exact, whereas the synthesis
+adds a risk of omission. Measurements in `tests/bench.py` and `tests/bench_exactitude.py`.
 """
 
 from __future__ import annotations
 
 from .report import Report
 
-# Coût plancher d'une synthèse : en deçà, l'appel au modèle est une dépense sans contrepartie.
+# Floor cost of a synthesis: below it, calling the model is an expense with no return.
 PASSTHROUGH_CHARS = 2000
 
-# Une énumération courte doit rester exhaustive : le modèle résume là où il faudrait lister.
+# A short enumeration must stay exhaustive: the model summarizes where it should list.
 PASSTHROUGH_MATCHES = 60
 
-# Pour une revue ou une synthèse, le livrable est un commentaire et non le contenu : rendre le brut
-# reporte le travail sur l'orchestrateur, ce qui ne vaut que si le contenu est plus court qu'une synthèse.
+# For a review or a synthesis, the deliverable is a comment, not the content: returning the raw text
+# shifts the work to the orchestrator, which only pays off when the content is shorter than a synthesis.
 PASSTHROUGH_CONTENT_CHARS = 1200
 
 # A token never loaded is saved on every later prompt, not once. Measured on a long Claude recette
@@ -77,7 +77,7 @@ def passthrough(
     stats: dict | None = None,
     details: str | None = None
 ) -> Report:
-    """Rend la preuve brute sans appeler le modèle, en disant pourquoi."""
+    """Return the raw evidence without calling the model, and say why."""
     report = Report(
         title=title,
         summary=f"Raw output, no synthesis: {reason}.",

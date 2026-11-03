@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Banc d'exactitude : le volume économisé ne vaut rien si la réponse est fausse.
+"""Accuracy bench: the volume saved is worth nothing if the answer is wrong.
 
-Chaque question porte une vérité terrain établie au grep. La notation est un proxy par mots clés, pas une
-évaluation sémantique : elle attrape les échecs francs (conclusion inverse, entité manquante), pas les
-nuances. Un `attendu` manquant vaut échec, un `interdit` présent aussi.
+Each question carries a ground truth established with grep. Scoring is a keyword proxy, not a
+semantic evaluation: it catches outright failures (opposite conclusion, missing entity), not the
+nuances. A missing `attendu` (expected) counts as a failure, and so does a present `interdit` (forbidden).
 
-Les `interdits` doivent rester des formulations sans équivoque. Une phrase trop générale produit de faux
-négatifs : « aucun trait ne combine UUID et timestamps » est une réponse juste et nuancée.
+The `interdits` must stay unambiguous phrasings. A sentence that is too general produces false
+negatives: « aucun trait ne combine UUID et timestamps » is a correct, nuanced answer.
 
-Les cas vivent dans un fichier JSON (`tests/cases.json` par défaut), pour que le banc ne dépende pas d'un
-projet particulier.
+The cases live in a JSON file (`tests/cases.json` by default), so that the bench does not depend on
+a particular project.
 """
 
 from __future__ import annotations

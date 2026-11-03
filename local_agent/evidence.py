@@ -1,4 +1,4 @@
-"""Cache des paquets de preuves : l'orchestrateur reçoit des ids, le brut reste sur disque."""
+"""Evidence packet cache: the orchestrator receives ids, the raw material stays on disk."""
 
 from __future__ import annotations
 

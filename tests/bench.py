@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Banc d'essai : volume entrant dans le contexte de l'orchestrateur, et latence.
+"""Bench: volume entering the orchestrator's context, and latency.
 
-Pour chaque tâche, deux chemins sont chiffrés :
-  - local-agent : le nombre de caractères que l'outil renvoie, seul volume reçu.
-  - à la main   : ce que l'orchestrateur aurait dû charger pour répondre lui-même.
+For each task, two paths are measured:
+  - local-agent: the number of characters the tool returns, the only volume received.
+  - by hand:     what the orchestrator would have had to load to answer by itself.
 
-Le second chemin est modélisé au plus favorable pour lui : pour une recherche, on suppose un grep suivi
-de la lecture des seuls fichiers les plus denses, pas de tout le répertoire. Pour un log volumineux, les
-erreurs greppées plus la fin du fichier, personne ne lisant deux cents mégaoctets de log.
+The second path is modelled in its most favourable form: for a search, a grep followed by reading
+only the densest files, not the whole directory. For a large log, the grepped errors plus the end
+of the file, since nobody reads two hundred megabytes of log.
 
-Les cas vivent dans un fichier JSON (`tests/cases.json` par défaut), pour que le banc ne dépende pas
-d'un projet particulier.
+The cases live in a JSON file (`tests/cases.json` by default), so that the bench does not depend on
+a particular project.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ DEFAULT_CASES = TOOL_ROOT / "tests" / "cases.json"
 
 
 def ensure_bench_log(repo: Path) -> Path:
-    """Génère un log >1 Mo dans var/ (gitignore) pour le cas de compression, sans le versionner."""
+    """Generate a >1 MB log in var/ (gitignored) for the compression case, without versioning it."""
     path = repo / "var" / "bench.log"
     if path.is_file() and path.stat().st_size >= 1_000_000:
         return path
@@ -58,7 +58,7 @@ def run(command: list[str], cwd: Path, timeout: int = 900) -> tuple[str, float, 
 
 
 def grep_cost(repo: Path, patterns: list[str], path: str, opened: int = 3) -> int:
-    """Coût d'un grep suivi de l'ouverture des fichiers les plus denses."""
+    """Cost of a grep followed by opening the densest files."""
     args = ["rg", "--line-number", "--no-heading", "--with-filename", "--ignore-case", "--max-columns", "220"]
     for pattern in patterns:
         args += ["-e", pattern]
@@ -94,7 +94,7 @@ def command_cost(repo: Path, command: list[str]) -> int:
 
 
 def log_cost(repo: Path, path: str, lines: int = 300) -> int:
-    """Coût réaliste face à un log volumineux : les erreurs greppées, plus la fin du fichier."""
+    """Realistic cost for a large log: the grepped errors, plus the end of the file."""
     errors, _, _ = run(
         ["rg", "--no-heading", "--with-filename", "--line-number", "-e", "ERROR", "-e", "CRITICAL", "-e", "EMERGENCY", path],
         repo,

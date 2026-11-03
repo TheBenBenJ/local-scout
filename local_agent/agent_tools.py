@@ -1,4 +1,4 @@
-"""Outils deterministes du modele local : rg, git, fichiers, checks, OCR. Pas de shell libre."""
+"""Deterministic tools of the local model: rg, git, files, checks, OCR. No free-form shell."""
 
 from __future__ import annotations
 
