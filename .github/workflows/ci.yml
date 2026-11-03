@@ -81,6 +81,13 @@ jobs:
           while IFS= read -r f; do python -m json.tool "$f" > /dev/null || status=1; done < "$RUNNER_TEMP/json.list"
           exit $status
 
+      - name: Remove swiftc
+        # The runner ships Swift for Linux, but local-scout reads "swiftc present" as "macOS
+        # Vision available" (ocr_vision.swift imports AppKit): test_ocr.py and test_router.py
+        # then fail. Test the usual Linux setup instead, where the Vision part is skipped.
+        run: |
+          for p in $(type -ap swiftc); do sudo rm -f "$p"; done
+          if command -v swiftc; then echo "::error::swiftc is still on PATH"; exit 1; fi
+
       - name: Tests (tests/run_all.py)
-        # On Linux the OCR test skips its macOS Vision part (the Swift sample needs macOS).
         run: python tests/run_all.py
