@@ -5,6 +5,6 @@ import os
 import sys
 from pathlib import Path
 
-print("local-agent : la CLI s'appelle local-scout. Transfert.", file=sys.stderr)
+print("local-agent: the CLI is now called local-scout. Forwarding.", file=sys.stderr)
 target = Path(__file__).resolve().parent / "local-scout"
 os.execv(sys.executable, [sys.executable, str(target), *sys.argv[1:]])

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Enregistre le MCP scout (2 outils) pour Cursor / Claude Code.
+# Register the scout MCP server (2 tools) for Cursor / Claude Code.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 for tool in python3 rg git; do
     if ! command -v "$tool" > /dev/null 2>&1; then
-        echo "prérequis manquant : $tool" >&2
+        echo "missing prerequisite: $tool" >&2
         exit 1
     fi
 done
@@ -27,7 +27,7 @@ def register(path: Path, label: str) -> None:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
-            print(f"{label} : {path} illisible, non modifié.")
+            print(f"{label}: {path} is unreadable, left unchanged.")
             return
     servers = payload.setdefault("mcpServers", {})
     env = {}
@@ -37,7 +37,7 @@ def register(path: Path, label: str) -> None:
             env = current["env"]
             break
     if "local-agent" in servers:
-        print(f"{label} : local-agent retiré (15 schémas d'outils à chaque tour).")
+        print(f"{label}: local-agent removed (15 tool schemas on every turn).")
         servers.pop("local-agent", None)
     entry = {
         "command": "python3",
@@ -48,7 +48,7 @@ def register(path: Path, label: str) -> None:
     servers["local-scout"] = entry
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"{label} : scout dans {path}.")
+    print(f"{label}: scout registered in {path}.")
 
 
 register(Path.home() / ".claude.json", "Claude Code")
@@ -58,6 +58,6 @@ PY
 echo
 python3 "$ROOT/bin/local-scout" doctor || true
 echo
-echo "Terminé. Redémarrer Cursor / Claude Code, puis scout_ping."
-echo "CLI : $ROOT/bin/local-scout --ticket ACME-XXXX"
-echo "      $ROOT/bin/local-scout doctor"
+echo "Done. Restart Cursor / Claude Code, then call scout_ping."
+echo "CLI: $ROOT/bin/local-scout --ticket PROJ-123"
+echo "     $ROOT/bin/local-scout doctor"

@@ -1,19 +1,19 @@
 __pycache__/
 *.py[cod]
 
-# Configuration locale : peut porter une clé d'API, contrairement à local-agent.env.example
+# Local configuration: may hold an API key, unlike local-agent.env.example
 local-agent.env
 
-# Traces et données d'exécution
+# Traces and runtime data
 var/
 
-# Cas de mesure dirigés sur un dépôt de travail : décrivent l'architecture d'un projet non public
+# Bench cases aimed at a work repository: they describe the architecture of a non-public project
 tests/cases.local.json
 
 .idea/
 .vscode/
 .DS_Store
-# Données d'exécution personnelles : journal d'appels, cumuls, propositions de patch en attente
+# Personal runtime data: call log, totals, pending patch proposals
 usage.jsonl
 usage-totals.json
 patches/
@@ -24,3 +24,6 @@ context.db-wal
 session.id
 traces/
 benchmarks/fixtures/
+
+# Dossiers written into the target repository when it is this checkout (bench, probes)
+temp/
